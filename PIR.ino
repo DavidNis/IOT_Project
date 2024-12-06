@@ -11,9 +11,9 @@ void loop(){
   delay(200);
  pirStat = digitalRead(pirPin); 
  if (pirStat == HIGH) {            // if motion detected
-   Serial.println("Hey I got you on on on!!!");
+   Serial.println("Motion detected!!!");
  } 
  else {
-   Serial.println("Hey off off off");
+   Serial.println("No motion!");
  }
 } 
