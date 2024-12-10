@@ -12,17 +12,17 @@ void setup() {
 }
 
 void loop() {
-  // Example commands to change LED strip colors
-  delay(2000); // Delay between commands
+  commands to change LED strip colors
   
+  delay(2000); // Delay between commands
   Serial.println("Sending Red color command...");
-  irsend.sendNEC(0xF3A48769, 32); // Replace with the actual command for "Red"
+  irsend.sendNEC(0xF3A48769, 32); //  command for "Red"
 
   delay(2000);
   Serial.println("Sending Green color command...");
-  irsend.sendNEC(0xFF629D, 32); // Replace with the actual command for "Green"
+  irsend.sendNEC(0xFF629D, 32); //  command for "Green"
 
   delay(2000);
   Serial.println("Sending Blue color command...");
-  irsend.sendNEC(0xFFE21D, 32); // Replace with the actual command for "Blue"
+  irsend.sendNEC(0xFFE21D, 32); //  command for "Blue"
 }
