@@ -1,5 +1,5 @@
 
-int pirPin = 21; // PIR pin 
+int pirPin = 13; // PIR pin 
 
 int pirStat = 0; // PIR status
 
