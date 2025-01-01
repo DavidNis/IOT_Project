@@ -42,4 +42,6 @@ flutter {
 dependencies {
     implementation platform('com.google.firebase:firebase-bom:32.2.0') // Firebase BOM
     implementation 'com.google.firebase:firebase-analytics' // Example Firebase service
+    implementation 'com.google.firebase:firebase-firestore'
+    implementation 'com.google.firebase:firebase-auth'
 }
