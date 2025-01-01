@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "894077147112",
+    "project_id": "iotsmartac-21c63",
+    "storage_bucket": "iotsmartac-21c63.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:894077147112:android:d8909eb60eacc9ba2db65d",
+        "android_client_info": {
+          "package_name": "com.technion.iot.smartAC"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8tKmY1TtsOetckPlJlO-U0WZbYDvH3-o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
