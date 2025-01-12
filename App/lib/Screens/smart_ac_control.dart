@@ -53,7 +53,6 @@ class _SmartACControlState extends State<SmartACControl> {
       });
     }
   }
-  
   Future<void> updateGradientInFirebase() async {
   try {
     final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
@@ -204,6 +203,7 @@ Future<void> fetchIndoorData() async {
                   MaterialPageRoute(
                     builder: (context) => GraphsAndLogsScreen(
                       temperatureLog: temperatureLog,
+                      humidityLog: [], // Add the required humidityLog argument
                     ),
                   ),
                 );
