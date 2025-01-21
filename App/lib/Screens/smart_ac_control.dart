@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
+//import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../Services/weather_service.dart';
 import '../widgets/temperature_control.dart';
@@ -25,7 +25,7 @@ class _SmartACControlState extends State<SmartACControl> {
   double humidity = 0; // Indoor humidity from Firebase
   double ledBrightness = 50;
   String mode = "Cool"; // Default mode
-  String fanSpeed = "Auto";
+  String fanSpeed = "Auto"; // Default fan speed
   bool sleepCurve = false;
   bool myFavorite = false;
   bool isPowerOn = true;
@@ -53,74 +53,102 @@ class _SmartACControlState extends State<SmartACControl> {
       });
     }
   }
-  Future<void> updateGradientInFirebase() async {
-  try {
-    final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
 
-    // Determine the gradient color code based on mode and temperature
-    String gradientCode;
-    if (mode == "Cool") {
-      double normalizedTemp = (temperature - 16) / 14;
-      normalizedTemp = normalizedTemp.clamp(0.0, 1.0);
-      int hexValue = (0xF7B04F +
-              ((0xF7609F - 0xF7B04F) * normalizedTemp).toInt())
-          .toInt();
-      gradientCode = hexValue.toRadixString(16).toUpperCase();
-    } else if (mode == "Heat") {
-      double normalizedTemp = (temperature - 16) / 14;
-      normalizedTemp = normalizedTemp.clamp(0.0, 1.0);
-      int hexValue = (0xF730CF +
-              ((0xF720DF - 0xF730CF) * normalizedTemp).toInt())
-          .toInt();
-      gradientCode = hexValue.toRadixString(16).toUpperCase();
-    } else {
-      gradientCode = "000000"; // Default for unsupported modes
+
+  Future<void> enqueueCommand(String command, dynamic value) async {
+    try {
+      final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
+
+      // Check if "commandQueue" exists, initialize if null
+      final snapshot = await databaseRef.child("transmitter/commandQueue").get();
+      if (!snapshot.exists) {
+        await databaseRef.child("transmitter/commandQueue").set({});
+      }
+
+      // Push the new command
+      await databaseRef.child("transmitter/commandQueue").push().set({
+        "command": command,
+        "value": value,
+        "timestamp": DateTime.now().toIso8601String(),
+      });
+
+      print("Command enqueued: $command with value $value");
+    } catch (e) {
+      print("Failed to enqueue command: $e");
     }
-
-    // Write the gradient code to Firebase
-    await databaseRef.child("transmitter/code").set(gradientCode);
-
-    print("Gradient color updated in Firebase: $gradientCode");
-  } catch (e) {
-    print("Failed to update gradient in Firebase: $e");
   }
-}
 
-Future<void> fetchIndoorData() async {
-  try {
-    // Get a reference to the Firebase Realtime Database
-    final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
+  Future<void> dequeueCommand() async {
+    try {
+      final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
 
-    // Listen for changes in the "DHT/temperature" node
-    databaseRef.child("DHT/temperature").onValue.listen((event) {
-      if (event.snapshot.exists) {
-        // Parse and update indoor temperature
-        setState(() {
-          indoorTemperature = double.tryParse(event.snapshot.value.toString()) ?? 0.0;
-        });
+      // Retrieve the current commandQueue
+      final snapshot = await databaseRef.child("transmitter/commandQueue").get();
+
+      if (snapshot.exists) {
+        List<dynamic> commandQueue = List<dynamic>.from(snapshot.value as List);
+
+        if (commandQueue.isNotEmpty) {
+          // Remove the first command (FIFO behavior)
+          commandQueue.removeAt(0);
+
+          // Update the queue in Firebase
+          await databaseRef.child("transmitter/commandQueue").set(commandQueue);
+
+          print("Dequeued the first command successfully.");
+        } else {
+          print("Command queue is empty, nothing to dequeue.");
+        }
       } else {
-        print("Temperature data not found in the database.");
+        print("Command queue does not exist.");
       }
-    });
-
-    // Listen for changes in the "DHT/humidity" node
-    databaseRef.child("DHT/humidity").onValue.listen((event) {
-      if (event.snapshot.exists) {
-        // Parse and update humidity
-        setState(() {
-          humidity = double.tryParse(event.snapshot.value.toString()) ?? 0.0;
-        });
-      } else {
-        print("Humidity data not found in the database.");
-      }
-    });
-  } catch (e) {
-    print("Error fetching data from Firebase: $e");
+    } catch (e) {
+      print("Failed to dequeue command: $e");
+    }
   }
-}
+
+
+
+  Future<void> clearCommandQueue() async {
+    try {
+      final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
+      await databaseRef.child("transmitter/commandQueue").remove(); // Removes the queue (null)
+      print("Command queue cleared.");
+    } catch (e) {
+      print("Failed to clear command queue: $e");
+    }
+  }
+
+
+  Future<void> fetchIndoorData() async {
+    try {
+      final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
+
+      databaseRef.child("DHT/temperature").onValue.listen((event) {
+        if (event.snapshot.exists) {
+          setState(() {
+            indoorTemperature = double.tryParse(event.snapshot.value.toString()) ?? 0.0;
+          });
+        } else {
+          print("Temperature data not found in the database.");
+        }
+      });
+
+      databaseRef.child("DHT/humidity").onValue.listen((event) {
+        if (event.snapshot.exists) {
+          setState(() {
+            humidity = double.tryParse(event.snapshot.value.toString()) ?? 0.0;
+          });
+        } else {
+          print("Humidity data not found in the database.");
+        }
+      });
+    } catch (e) {
+      print("Error fetching data from Firebase: $e");
+    }
+  }
 
   void initializeTemperatureLog() {
-    // Initialize temperature log with dummy or historical data
     temperatureLog.add({
       'time': DateTime.now().subtract(Duration(hours: 1)),
       'temperature': 23.5
@@ -129,6 +157,51 @@ Future<void> fetchIndoorData() async {
       'time': DateTime.now(),
       'temperature': 24.0
     });
+  }
+
+  void _togglePower() async {
+    setState(() {
+      isPowerOn = !isPowerOn;
+    });
+
+    String hexValue = isPowerOn ? "F7C03F" : "F740BF"; // IR codes for power on/off
+
+    try {
+      await enqueueCommand("togglePower", hexValue); // Add command to queue
+      print("Power command enqueued: $hexValue");
+    } catch (e) {
+      print("Failed to enqueue power command: $e");
+    }
+  }
+
+  void _changeMode(String newMode) async {
+    setState(() {
+      mode = newMode;
+    });
+
+    String hexValue = mode == "Cool" ? "F7609F" : "F720DF";
+
+    try {
+      await enqueueCommand("changeMode", hexValue); // Add command to queue
+      print("Mode command enqueued: $hexValue");
+    } catch (e) {
+      print("Failed to enqueue mode command: $e");
+    }
+  }
+
+  void _changeFanSpeed(String newFanSpeed) async {
+    setState(() {
+      fanSpeed = newFanSpeed;
+    });
+
+    String hexValue = fanSpeed == "Auto" ? "F728D7" : "F76897";
+
+  try {
+    await enqueueCommand("changeFanSpeed", hexValue); // Add command to queue
+    print("Fan speed command enqueued: $hexValue");
+  } catch (e) {
+    print("Failed to enqueue fan speed command: $e");
+  }
   }
 
   @override
@@ -178,7 +251,11 @@ Future<void> fetchIndoorData() async {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => TimerScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => TimerScreen(
+                      togglePower: _togglePower, // Pass the togglePower function
+                    ),
+                  ),
                 );
               },
             ),
@@ -226,221 +303,234 @@ Future<void> fetchIndoorData() async {
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
-            child: Container(
-              width: constraints.maxWidth,
-              height: constraints.maxHeight,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: mode == "Cool"
-                      ? [Colors.blue[200]!, Colors.blue[50]!]
-                      : [Colors.red[200]!, Colors.red[50]!],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight,
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
+              child: IntrinsicHeight(
                 child: Column(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    Container(
+                      width: constraints.maxWidth,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: mode == "Cool"
+                              ? [Colors.blue[200]!, Colors.blue[50]!]
+                              : [Colors.red[200]!, Colors.red[50]!],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
                           children: [
-                            Text(
-                              "Outdoor Temperature: ${outdoorTemperature.toInt()}°C",
-                              style: TextStyle(fontSize: 16, color: Colors.black54),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "Outdoor Temperature: ${outdoorTemperature.toInt()}°C",
+                                      style: TextStyle(fontSize: 16, color: Colors.black54),
+                                    ),
+                                    SizedBox(height: 10),
+                                    Text(
+                                      "Indoor Temperature: ${indoorTemperature.toInt()}°C",
+                                      style: TextStyle(fontSize: 16, color: Colors.black54),
+                                    ),
+                                    SizedBox(height: 10),
+                                    Text(
+                                      "Humidity: ${humidity.toInt()}%",
+                                      style: TextStyle(fontSize: 16, color: Colors.black54),
+                                    ),
+                                  ],
+                                ),
+                                GestureDetector(
+                                  onTap: _togglePower,
+                                  child: Column(
+                                    children: [
+                                      Container(
+                                        width: constraints.maxWidth * 0.15,
+                                        height: constraints.maxWidth * 0.15,
+                                        decoration: BoxDecoration(
+                                          color: isPowerOn ? Colors.blue : Colors.grey,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          Icons.power_settings_new,
+                                          color: Colors.white,
+                                          size: constraints.maxWidth * 0.07,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        "Power",
+                                        style: TextStyle(fontSize: 12, color: Colors.black54),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                            SizedBox(height: 10),
-                            Text(
-                              "Indoor Temperature: ${indoorTemperature.toInt()}°C",
-                              style: TextStyle(fontSize: 16, color: Colors.black54),
+                            SizedBox(height: constraints.maxHeight * 0.02),
+                            TemperatureControl(
+                              temperature: temperature,
+                              onTemperatureChange: (value) async {
+                                setState(() {
+                                  temperature = value;
+                                });
+
+                                // Generate IR code for temperature (example logic)
+                                String hexValue = "F7A" + (temperature.toInt()).toRadixString(16).toUpperCase(); 
+
+                                try {
+                                  await enqueueCommand("setTemperature", hexValue); // Add command to queue
+                                  print("Temperature command enqueued: $hexValue");
+                                } catch (e) {
+                                  print("Failed to enqueue temperature command: $e");
+                                }
+                              },
                             ),
-                            SizedBox(height: 10),
+                            SizedBox(height: constraints.maxHeight * 0.02),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    height: 100, // Adjust the height as needed
+                                    child: FeatureCard(
+                                      title: "Mode",
+                                      value: mode,
+                                      icon: Icons.ac_unit,
+                                      onTap: () => _changeMode(mode == "Cool" ? "Heat" : "Cool"),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 10), // Add some spacing between the cards
+                                Expanded(
+                                  child: Container(
+                                    height: 100, // Adjust the height as needed
+                                    child: FeatureCard(
+                                      title: "Fan Speed",
+                                      value: fanSpeed,
+                                      icon: Icons.air,
+                                      onTap: () => _changeFanSpeed(fanSpeed == "Auto" ? "High" : "Auto"),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: constraints.maxHeight * 0.02),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                IconButtonFeature(
+                                  label: "Vertical Swing",
+                                  icon: Icons.north,
+                                  isActive: verticalSwingActive,
+                                  onPressed: () {
+                                    setState(() {
+                                      verticalSwingActive = !verticalSwingActive;
+                                    });
+                                  },
+                                ),
+                                IconButtonFeature(
+                                  label: "Horizontal Swing",
+                                  icon: Icons.swap_horiz,
+                                  isActive: horizontalSwingActive,
+                                  onPressed: () {
+                                    setState(() {
+                                      horizontalSwingActive = !horizontalSwingActive;
+                                    });
+                                  },
+                                ),
+                                IconButtonFeature(
+                                  label: "Light",
+                                  icon: Icons.lightbulb,
+                                  isActive: lightActive,
+                                  onPressed: () {
+                                    setState(() {
+                                      lightActive = !lightActive;
+                                    });
+                                  },
+                                ),
+                                IconButtonFeature(
+                                  label: "Sound",
+                                  icon: Icons.volume_up,
+                                  isActive: soundActive,
+                                  onPressed: () {
+                                    setState(() {
+                                      soundActive = !soundActive;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: constraints.maxHeight * 0.02),
                             Text(
-                              "Humidity: ${humidity.toInt()}%",
-                              style: TextStyle(fontSize: 16, color: Colors.black54),
+                              "LED Brightness: ${ledBrightness.toInt()}%",
+                              style: TextStyle(fontSize: 18),
+                            ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.remove),
+                                  onPressed: () {
+                                    setState(() {
+                                      if (ledBrightness > 0) ledBrightness -= 10;
+                                    });
+                                  },
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.add),
+                                  onPressed: () {
+                                    setState(() {
+                                      if (ledBrightness < 100) ledBrightness += 10;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: constraints.maxHeight * 0.02),
+                            Divider(height: 1, color: Colors.grey[300]),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0), // Add horizontal padding
+                              child: Column(
+                                children: [
+                                  ToggleRow(
+                                    label: "Sleep Curve",
+                                    description: "Customizes temperature and sleep times",
+                                    icon: Icons.nights_stay,
+                                    value: sleepCurve,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        sleepCurve = value;
+                                      });
+                                    },
+                                  ),
+                                  Divider(height: 1, color: Colors.grey[300]),
+                                  ToggleRow(
+                                    label: "My Favorite",
+                                    description: "Choose your favorite settings",
+                                    icon: Icons.favorite_border,
+                                    value: myFavorite,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        myFavorite = value;
+                                      });
+                                    },
+                                  ),
+                                  Divider(height: 1, color: Colors.grey[300]),
+                                ],
+                              ),
                             ),
                           ],
                         ),
-                        GestureDetector(
-                          onTap: () async {
-                            setState(() {
-                              isPowerOn = !isPowerOn;
-                            });
-
-                            // Set the hex value based on the power state
-                            String hexValue = isPowerOn ? "F7C03F" : "F740BF";
-
-                            // write the hex value to Firebase under the "transmitter" node
-                            try {
-                              final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
-                              await databaseRef.child("transmitter").set(hexValue);
-
-                              print("Transmitter value updated: $hexValue");
-                            } catch (e) {
-                              print("Failed to update transmitter value in Firebase: $e");
-                            }
-                          },
-                          child: Column(
-                            children: [
-                              Container(
-                                width: constraints.maxWidth * 0.15,
-                                height: constraints.maxWidth * 0.15,
-                                decoration: BoxDecoration(
-                                  color: isPowerOn ? Colors.blue : Colors.grey,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.power_settings_new,
-                                  color: Colors.white,
-                                  size: constraints.maxWidth * 0.07,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                "Power",
-                                style: TextStyle(fontSize: 12, color: Colors.black54),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                    SizedBox(height: constraints.maxHeight * 0.02),
-                    TemperatureControl(
-                      temperature: temperature,
-                      onTemperatureChange: (value) {
-                        setState(() {
-                          temperature = value;
-                        });
-                      },
-                    ),
-                    SizedBox(height: constraints.maxHeight * 0.02),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        FeatureCard(
-                          title: "Mode",
-                          value: mode,
-                          icon: Icons.ac_unit,
-                          onTap: () {
-                            setState(() {
-                              mode = mode == "Cool" ? "Heat" : "Cool";
-                            });
-                          },
-                        ),
-                        FeatureCard(
-                          title: "Fan Speed",
-                          value: fanSpeed,
-                          icon: Icons.air,
-                          onTap: () {
-                            setState(() {
-                              fanSpeed = fanSpeed == "Auto" ? "High" : "Auto";
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: constraints.maxHeight * 0.02),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        IconButtonFeature(
-                          label: "Vertical Swing",
-                          icon: Icons.north,
-                          isActive: verticalSwingActive,
-                          onPressed: () {
-                            setState(() {
-                              verticalSwingActive = !verticalSwingActive;
-                            });
-                          },
-                        ),
-                        IconButtonFeature(
-                          label: "Horizontal Swing",
-                          icon: Icons.swap_horiz,
-                          isActive: horizontalSwingActive,
-                          onPressed: () {
-                            setState(() {
-                              horizontalSwingActive = !horizontalSwingActive;
-                            });
-                          },
-                        ),
-                        IconButtonFeature(
-                          label: "Light",
-                          icon: Icons.lightbulb,
-                          isActive: lightActive,
-                          onPressed: () {
-                            setState(() {
-                              lightActive = !lightActive;
-                            });
-                          },
-                        ),
-                        IconButtonFeature(
-                          label: "Sound",
-                          icon: Icons.volume_up,
-                          isActive: soundActive,
-                          onPressed: () {
-                            setState(() {
-                              soundActive = !soundActive;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: constraints.maxHeight * 0.02),
-                    Text(
-                      "LED Brightness: ${ledBrightness.toInt()}%",
-                      style: TextStyle(fontSize: 18),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.remove),
-                          onPressed: () {
-                            setState(() {
-                              if (ledBrightness > 0) ledBrightness -= 10;
-                            });
-                          },
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.add),
-                          onPressed: () {
-                            setState(() {
-                              if (ledBrightness < 100) ledBrightness += 10;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: constraints.maxHeight * 0.02),
-                    Divider(height: 1, color: Colors.grey[300]),
-                    ToggleRow(
-                      label: "Sleep Curve",
-                      description: "Customize the set temperature and sleep times",
-                      icon: Icons.nights_stay,
-                      value: sleepCurve,
-                      onChanged: (value) {
-                        setState(() {
-                          sleepCurve = value;
-                        });
-                      },
-                    ),
-                    Divider(height: 1, color: Colors.grey[300]),
-                    ToggleRow(
-                      label: "My Favorite",
-                      description: "Choose your favorite settings",
-                      icon: Icons.favorite_border,
-                      value: myFavorite,
-                      onChanged: (value) {
-                        setState(() {
-                          myFavorite = value;
-                        });
-                      },
-                    ),
-                    Divider(height: 1, color: Colors.grey[300]),
                   ],
                 ),
               ),
