@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:async';
 
 class TimerScreen extends StatefulWidget {
+  final Function togglePower; // Pass togglePower function from parent
+
+  TimerScreen({required this.togglePower});
+
   @override
   _TimerScreenState createState() => _TimerScreenState();
 }
@@ -27,7 +30,9 @@ class _TimerScreenState extends State<TimerScreen> {
         } else {
           t.cancel();
           isTimerRunning = false;
-          _powerOffAC();
+
+          // Call togglePower to enqueue the power-off command
+          widget.togglePower();
         }
       });
     });
@@ -39,26 +44,6 @@ class _TimerScreenState extends State<TimerScreen> {
       isTimerRunning = false;
       remainingSeconds = 0;
     });
-  }
-
-  Future<void> _powerOffAC() async {
-    const String esp32Url = "http://192.168.4.1/power"; // Replace with your ESP32 IP address
-    const String powerOffCommand = "off"; // Command to power off the AC
-
-    try {
-      final response = await http.post(
-        Uri.parse(esp32Url),
-        body: {"state": powerOffCommand},
-      );
-
-      if (response.statusCode == 200) {
-        print("AC Powered Off");
-      } else {
-        print("Failed to power off AC: ${response.statusCode}");
-      }
-    } catch (error) {
-      print("Error while powering off AC: $error");
-    }
   }
 
   String _formatTime(int totalSeconds) {
@@ -79,7 +64,7 @@ class _TimerScreenState extends State<TimerScreen> {
           children: [
             Icon(
               Icons.timer,
-              color: Colors.white, 
+              color: Colors.white,
               size: 40,
             ),
             SizedBox(width: 16), // Space between the icon and the text
@@ -97,7 +82,7 @@ class _TimerScreenState extends State<TimerScreen> {
                 Text(
                   "Never forget to turn off your AC",
                   style: TextStyle(
-                    color: Colors.white70, 
+                    color: Colors.white70,
                     fontSize: 14,
                   ),
                 ),
