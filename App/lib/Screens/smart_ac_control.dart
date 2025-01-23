@@ -65,7 +65,7 @@ class _SmartACControlState extends State<SmartACControl> {
         await databaseRef.child("transmitter/commandQueue").set({});
       }
 
-      // Push the new command
+      // Push the new command 
       await databaseRef.child("transmitter/commandQueue").push().set({
         "command": command,
         "value": value,
@@ -159,20 +159,24 @@ class _SmartACControlState extends State<SmartACControl> {
     });
   }
 
-  void _togglePower() async {
-    setState(() {
-      isPowerOn = !isPowerOn;
-    });
+void _togglePower() async {
+  setState(() {
+    isPowerOn = !isPowerOn;
+  });
 
-    String hexValue = isPowerOn ? "F7C03F" : "F740BF"; // IR codes for power on/off
+  String hexValue = isPowerOn ? "F7C03F" : "F740BF"; // IR codes for power on/off
 
-    try {
-      await enqueueCommand("togglePower", hexValue); // Add command to queue
-      print("Power command enqueued: $hexValue");
-    } catch (e) {
-      print("Failed to enqueue power command: $e");
+  try {
+    if (!isPowerOn) {
+      // Clear the queue when turning off the AC
+      await clearCommandQueue();
     }
+    await enqueueCommand("togglePower", hexValue); // Add power toggle command to queue
+    print("Power command enqueued: $hexValue");
+  } catch (e) {
+    print("Failed to enqueue power command: $e");
   }
+}
 
   void _changeMode(String newMode) async {
     setState(() {
@@ -254,6 +258,7 @@ class _SmartACControlState extends State<SmartACControl> {
                   MaterialPageRoute(
                     builder: (context) => TimerScreen(
                       togglePower: _togglePower, // Pass the togglePower function
+                      isACOn: isPowerOn, // Add the required isACOn argument
                     ),
                   ),
                 );
@@ -266,7 +271,12 @@ class _SmartACControlState extends State<SmartACControl> {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => ScheduleScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => ScheduleScreen(
+                      //togglePower: _togglePower,
+                      //isACOn: isPowerOn,
+                    ),
+                  ),
                 );
               },
             ),
