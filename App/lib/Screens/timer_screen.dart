@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
+import '../Utils/timer_manager.dart';
 
 class TimerScreen extends StatefulWidget {
-  final Function togglePower; // Pass togglePower function from parent
+  final Function togglePower;
+  final bool isACOn;
 
-  TimerScreen({required this.togglePower});
+  TimerScreen({required this.togglePower, required this.isACOn});
 
   @override
   _TimerScreenState createState() => _TimerScreenState();
@@ -13,44 +14,23 @@ class TimerScreen extends StatefulWidget {
 class _TimerScreenState extends State<TimerScreen> {
   int selectedHours = 0;
   int selectedMinutes = 0;
-  bool isTimerRunning = false;
-  int remainingSeconds = 0;
-  Timer? timer;
+  int selectedSeconds = 0;
+  final TimerManager _timerManager = TimerManager();
 
-  void _startTimer() {
-    setState(() {
-      remainingSeconds = (selectedHours * 3600) + (selectedMinutes * 60);
-      isTimerRunning = true;
-    });
-
-    timer = Timer.periodic(Duration(seconds: 1), (Timer t) {
-      setState(() {
-        if (remainingSeconds > 0) {
-          remainingSeconds--;
-        } else {
-          t.cancel();
-          isTimerRunning = false;
-
-          // Call togglePower to enqueue the power-off command
-          widget.togglePower();
-        }
-      });
-    });
+  @override
+  void initState() {
+    super.initState();
+    _timerManager.remainingSecondsNotifier.addListener(_updateState);
   }
 
-  void _cancelTimer() {
-    setState(() {
-      timer?.cancel();
-      isTimerRunning = false;
-      remainingSeconds = 0;
-    });
+  @override
+  void dispose() {
+    _timerManager.remainingSecondsNotifier.removeListener(_updateState);
+    super.dispose();
   }
 
-  String _formatTime(int totalSeconds) {
-    int hours = totalSeconds ~/ 3600;
-    int minutes = (totalSeconds % 3600) ~/ 60;
-    int seconds = totalSeconds % 60;
-    return "${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
+  void _updateState() {
+    setState(() {});
   }
 
   @override
@@ -58,107 +38,118 @@ class _TimerScreenState extends State<TimerScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        toolbarHeight: 80, // Increases the height of the AppBar for the larger content
-        title: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.timer,
-              color: Colors.white,
-              size: 40,
-            ),
-            SizedBox(width: 16), // Space between the icon and the text
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Timer",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  "Never forget to turn off your AC",
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ],
+        toolbarHeight: 80,
+        title: Text(
+          "Timer",
+          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.blue,
-        elevation: 0,
       ),
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(20.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                isTimerRunning
-                    ? "The AC will turn off in"
-                    : "Set the AC timer",
-                style: TextStyle(
-                  fontSize: 20,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w400,
-                ),
+                _timerManager.isRunning()
+                    ? "Turn the AC off in:"
+                    : "Set the AC Timer:",
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 30),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildPicker(
+                    "Hours",
+                    24,
+                    selectedHours,
+                    (value) => setState(() => selectedHours = value),
+                    enabled: !_timerManager.isRunning(),
+                  ),
+                  SizedBox(width: 15),
+                  _buildPicker(
+                    "Min",
+                    60,
+                    selectedMinutes,
+                    (value) => setState(() => selectedMinutes = value),
+                    enabled: !_timerManager.isRunning(),
+                  ),
+                  SizedBox(width: 15),
+                  _buildPicker(
+                    "Sec",
+                    60,
+                    selectedSeconds,
+                    (value) => setState(() => selectedSeconds = value),
+                    enabled: !_timerManager.isRunning(),
+                  ),
+                ],
               ),
               SizedBox(height: 40),
-              if (isTimerRunning)
-                Text(
-                  _formatTime(remainingSeconds),
-                  style: TextStyle(
-                    fontSize: 60,
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-              else
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildPicker(
-                      "hours",
-                      24,
-                      selectedHours,
-                      (value) {
-                        setState(() {
-                          selectedHours = value;
-                        });
-                      },
+              ValueListenableBuilder<int>(
+                valueListenable: _timerManager.remainingSecondsNotifier,
+                builder: (context, remainingSeconds, child) {
+                  return Text(
+                    _timerManager.isRunning()
+                        ? _formatTime(remainingSeconds)
+                        : "",
+                    style: TextStyle(
+                      fontSize: 50,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
                     ),
-                    SizedBox(width: 10),
-                    _buildPicker(
-                      "min.",
-                      60,
-                      selectedMinutes,
-                      (value) {
-                        setState(() {
-                          selectedMinutes = value;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              SizedBox(height: 60),
+                  );
+                },
+              ),
+              SizedBox(height: 40),
               ElevatedButton(
-                onPressed: isTimerRunning ? _cancelTimer : _startTimer,
+                onPressed: !_timerManager.isRunning() && widget.isACOn
+                    ? () {
+                        int totalSeconds = (selectedHours * 3600) +
+                            (selectedMinutes * 60) +
+                            selectedSeconds;
+                        _timerManager.startTimer(totalSeconds, () {
+                          widget.togglePower(); // Turn off the AC
+                          print("AC turned off.");
+                        });
+                      }
+                    : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isTimerRunning ? Colors.red : Colors.teal,
-                  padding: EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+                  backgroundColor:
+                      !_timerManager.isRunning() && widget.isACOn
+                          ? Colors.teal
+                          : Colors.grey,
+                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 32),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(30),
                   ),
                 ),
                 child: Text(
-                  isTimerRunning ? "Cancel Timer" : "Start Timer",
-                  style: TextStyle(fontSize: 16, color: Colors.white),
+                  "Start Timer",
+                  style: TextStyle(fontSize: 20, color: Colors.white),
+                ),
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _timerManager.isRunning()
+                    ? () {
+                        _timerManager.stopTimer();
+                        print("Timer canceled.");
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _timerManager.isRunning()
+                      ? Colors.red
+                      : Colors.grey,
+                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 32),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                child: Text(
+                  "Cancel Timer",
+                  style: TextStyle(fontSize: 20, color: Colors.white),
                 ),
               ),
             ],
@@ -169,40 +160,29 @@ class _TimerScreenState extends State<TimerScreen> {
   }
 
   Widget _buildPicker(String label, int itemCount, int selectedValue,
-      ValueChanged<int> onSelectedItemChanged) {
+      ValueChanged<int> onSelectedItemChanged,
+      {required bool enabled}) {
     return Column(
       children: [
         Container(
-          height: 100,
-          width: 60,
+          height: 120,
+          width: 80,
           child: ListWheelScrollView.useDelegate(
-            itemExtent: 40,
-            physics: FixedExtentScrollPhysics(),
-            onSelectedItemChanged: onSelectedItemChanged,
+            itemExtent: 50,
+            physics:
+                enabled ? FixedExtentScrollPhysics() : NeverScrollableScrollPhysics(),
+            onSelectedItemChanged: enabled ? onSelectedItemChanged : null,
             childDelegate: ListWheelChildBuilderDelegate(
-              builder: (context, index) {
-                return Center(
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: index == selectedValue
-                          ? Colors.grey[300]
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      index.toString().padLeft(2, '0'),
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: index == selectedValue
-                            ? Colors.black
-                            : Colors.grey[600],
-                      ),
-                    ),
+              builder: (context, index) => Center(
+                child: Text(
+                  index.toString().padLeft(2, '0'),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: enabled ? Colors.black : Colors.grey,
                   ),
-                );
-              },
+                ),
+              ),
               childCount: itemCount,
             ),
           ),
@@ -211,12 +191,19 @@ class _TimerScreenState extends State<TimerScreen> {
         Text(
           label,
           style: TextStyle(
-            fontSize: 16,
+            fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.black87,
+            color: enabled ? Colors.black87 : Colors.grey,
           ),
         ),
       ],
     );
+  }
+
+  String _formatTime(int totalSeconds) {
+    int hours = totalSeconds ~/ 3600;
+    int minutes = (totalSeconds % 3600) ~/ 60;
+    int seconds = totalSeconds % 60;
+    return "${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
   }
 }
