@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-//import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../Services/weather_service.dart';
 import '../widgets/temperature_control.dart';
@@ -25,7 +24,7 @@ class _SmartACControlState extends State<SmartACControl> {
   double humidity = 0; // Indoor humidity from Firebase
   double ledBrightness = 50;
   String mode = "Cool"; // Default mode
-  String fanSpeed = "Auto"; // Default fan speed
+  String fanSpeed = "Low"; // Default fan speed
   bool sleepCurve = false;
   bool myFavorite = false;
   bool isPowerOn = true;
@@ -35,6 +34,14 @@ class _SmartACControlState extends State<SmartACControl> {
   bool lightActive = false;
   bool soundActive = false;
 
+  bool isMonitoring = false;
+  bool isManualOverride = false;
+
+  // Local variables to store changes
+  String newMode = "Cool";
+  String newFanSpeed = "Low";
+  double newTemperature = 24;
+
   List<Map<String, dynamic>> temperatureLog = [];
 
   @override
@@ -43,6 +50,7 @@ class _SmartACControlState extends State<SmartACControl> {
     fetchCurrentTemperature();
     fetchIndoorData();
     initializeTemperatureLog();
+    _monitorMotionSensor();
   }
 
   Future<void> fetchCurrentTemperature() async {
@@ -53,72 +61,6 @@ class _SmartACControlState extends State<SmartACControl> {
       });
     }
   }
-
-
-  Future<void> enqueueCommand(String command, dynamic value) async {
-    try {
-      final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
-
-      // Check if "commandQueue" exists, initialize if null
-      final snapshot = await databaseRef.child("transmitter/commandQueue").get();
-      if (!snapshot.exists) {
-        await databaseRef.child("transmitter/commandQueue").set({});
-      }
-
-      // Push the new command 
-      await databaseRef.child("transmitter/commandQueue").push().set({
-        "command": command,
-        "value": value,
-        "timestamp": DateTime.now().toIso8601String(),
-      });
-
-      print("Command enqueued: $command with value $value");
-    } catch (e) {
-      print("Failed to enqueue command: $e");
-    }
-  }
-
-  Future<void> dequeueCommand() async {
-    try {
-      final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
-
-      // Retrieve the current commandQueue
-      final snapshot = await databaseRef.child("transmitter/commandQueue").get();
-
-      if (snapshot.exists) {
-        List<dynamic> commandQueue = List<dynamic>.from(snapshot.value as List);
-
-        if (commandQueue.isNotEmpty) {
-          // Remove the first command (FIFO behavior)
-          commandQueue.removeAt(0);
-
-          // Update the queue in Firebase
-          await databaseRef.child("transmitter/commandQueue").set(commandQueue);
-
-          print("Dequeued the first command successfully.");
-        } else {
-          print("Command queue is empty, nothing to dequeue.");
-        }
-      } else {
-        print("Command queue does not exist.");
-      }
-    } catch (e) {
-      print("Failed to dequeue command: $e");
-    }
-  }
-
-
-
-  Future<void> clearCommandQueue() async {
-    try {
-      final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
-      await databaseRef.child("transmitter/commandQueue").remove(); // Removes the queue (null)
-      print("Command queue cleared.");
-    } catch (e) {
-      print("Failed to clear command queue: $e");
-    }
-  }
-
 
   Future<void> fetchIndoorData() async {
     try {
@@ -159,53 +101,103 @@ class _SmartACControlState extends State<SmartACControl> {
     });
   }
 
-void _togglePower() async {
-  setState(() {
-    isPowerOn = !isPowerOn;
-  });
-
-  String hexValue = isPowerOn ? "F7C03F" : "F740BF"; // IR codes for power on/off
-
-  try {
-    if (!isPowerOn) {
-      // Clear the queue when turning off the AC
-      await clearCommandQueue();
-    }
-    await enqueueCommand("togglePower", hexValue); // Add power toggle command to queue
-    print("Power command enqueued: $hexValue");
-  } catch (e) {
-    print("Failed to enqueue power command: $e");
-  }
-}
-
-  void _changeMode(String newMode) async {
+  void _togglePower() async {
     setState(() {
-      mode = newMode;
+      isPowerOn = !isPowerOn;
+      isManualOverride = true; // Set manual override to true when toggling power manually
     });
 
-    String hexValue = mode == "Cool" ? "F7609F" : "F720DF";
+    String hexCode = isPowerOn ? "F7C03F" : "F740BF"; // IR codes for power on/off
+    String hexValue = isPowerOn ? "On" : "Off"; // IR codes for power on/off
 
     try {
-      await enqueueCommand("changeMode", hexValue); // Add command to queue
-      print("Mode command enqueued: $hexValue");
+      await FirebaseDatabase.instance.ref().child('transmitter/onOff/code').set(hexCode); 
+      await FirebaseDatabase.instance.ref().child('transmitter/onOff/value').set(hexValue); 
+
+      print("Power command enqueued and value set: $hexCode");
     } catch (e) {
-      print("Failed to enqueue mode command: $e");
+      print("Failed to enqueue power command or set value: $e");
     }
   }
 
-  void _changeFanSpeed(String newFanSpeed) async {
+  void _changeMode(String newMode) {
     setState(() {
-      fanSpeed = newFanSpeed;
+      this.newMode = newMode;
     });
-
-    String hexValue = fanSpeed == "Auto" ? "F728D7" : "F76897";
-
-  try {
-    await enqueueCommand("changeFanSpeed", hexValue); // Add command to queue
-    print("Fan speed command enqueued: $hexValue");
-  } catch (e) {
-    print("Failed to enqueue fan speed command: $e");
   }
+
+  void _changeFanSpeed(String newFanSpeed) {
+    setState(() {
+      this.newFanSpeed = newFanSpeed;
+    });
+  }
+
+  void _changeTemperature(double newTemperature) {
+    setState(() {
+      this.newTemperature = newTemperature;
+    });
+  }
+
+  void _monitorMotionSensor() {
+    final DatabaseReference motionSensorRef = FirebaseDatabase.instance.ref().child('motionSensor/value');
+    motionSensorRef.onValue.listen((event) {
+      if (event.snapshot.value == 0) {
+        if (!isMonitoring) {
+          isMonitoring = true;
+          Future.delayed(Duration(seconds: 6), () {
+            if (isMonitoring && !isManualOverride) {
+              _turnOffAC();
+            }
+          });
+        }
+      } else {
+        isMonitoring = false;
+        isManualOverride = false; // Reset manual override when motion is detected
+      }
+    });
+  }
+
+  Future<void> _turnOffAC() async {
+    try {
+      await FirebaseDatabase.instance.ref().child('transmitter/onOff/code').set('F740BF'); // Directly set the value
+      await FirebaseDatabase.instance.ref().child('transmitter/onOff/value').set('Off'); // Directly set the value
+
+      setState(() {
+        isPowerOn = false;
+      });
+      print("AC turned off and command sent to transmitter.");
+    } catch (e) {
+      print("Failed to turn off AC: $e");
+    }
+  }
+
+  Future<void> _applyChanges() async {
+    try {
+      // Update mode
+      String modeHexValue = newMode == "Cool" ? "F7609F" : "F720DF";
+      await FirebaseDatabase.instance.ref().child('transmitter/mode/code').set(modeHexValue);
+      await FirebaseDatabase.instance.ref().child('transmitter/mode/value').set(newMode);
+
+      // Update fan speed
+      String fanSpeedHexValue = newFanSpeed == "Low" ? "F728D7" : "F76897";
+      await FirebaseDatabase.instance.ref().child('transmitter/fanSpeed/code').set(fanSpeedHexValue);
+      await FirebaseDatabase.instance.ref().child('transmitter/fanSpeed/value').set(newFanSpeed);
+
+      // Update temperature
+      String temperatureHexValue = "F7A" + (newTemperature.toInt()).toRadixString(16).toUpperCase();
+      await FirebaseDatabase.instance.ref().child('transmitter/temperature/code').set(temperatureHexValue);
+
+      // Apply changes to the main variables
+      setState(() {
+        mode = newMode;
+        fanSpeed = newFanSpeed;
+        temperature = newTemperature;
+      });
+
+      print("Changes applied: Mode: $newMode, Fan Speed: $newFanSpeed, Temperature: $newTemperature");
+    } catch (e) {
+      print("Failed to apply changes: $e");
+    }
   }
 
   @override
@@ -258,7 +250,7 @@ void _togglePower() async {
                   MaterialPageRoute(
                     builder: (context) => TimerScreen(
                       togglePower: _togglePower, // Pass the togglePower function
-                      isACOn: isPowerOn, // Add the required isACOn argument
+                      isACOn: isPowerOn, // Pass the isPowerOn state
                     ),
                   ),
                 );
@@ -271,12 +263,7 @@ void _togglePower() async {
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => ScheduleScreen(
-                      //togglePower: _togglePower,
-                      //isACOn: isPowerOn,
-                    ),
-                  ),
+                  MaterialPageRoute(builder: (context) => ScheduleScreen()),
                 );
               },
             ),
@@ -290,7 +277,7 @@ void _togglePower() async {
                   MaterialPageRoute(
                     builder: (context) => GraphsAndLogsScreen(
                       temperatureLog: temperatureLog,
-                      humidityLog: [], // Add the required humidityLog argument
+                      humidityLog: [], 
                     ),
                   ),
                 );
@@ -324,7 +311,7 @@ void _togglePower() async {
                       width: constraints.maxWidth,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: mode == "Cool"
+                          colors: newMode == "Cool"
                               ? [Colors.blue[200]!, Colors.blue[50]!]
                               : [Colors.red[200]!, Colors.red[50]!],
                           begin: Alignment.topCenter,
@@ -386,21 +373,9 @@ void _togglePower() async {
                             ),
                             SizedBox(height: constraints.maxHeight * 0.02),
                             TemperatureControl(
-                              temperature: temperature,
-                              onTemperatureChange: (value) async {
-                                setState(() {
-                                  temperature = value;
-                                });
-
-                                // Generate IR code for temperature (example logic)
-                                String hexValue = "F7A" + (temperature.toInt()).toRadixString(16).toUpperCase(); 
-
-                                try {
-                                  await enqueueCommand("setTemperature", hexValue); // Add command to queue
-                                  print("Temperature command enqueued: $hexValue");
-                                } catch (e) {
-                                  print("Failed to enqueue temperature command: $e");
-                                }
+                              temperature: newTemperature,
+                              onTemperatureChange: (value) {
+                                _changeTemperature(value);
                               },
                             ),
                             SizedBox(height: constraints.maxHeight * 0.02),
@@ -412,9 +387,9 @@ void _togglePower() async {
                                     height: 100, // Adjust the height as needed
                                     child: FeatureCard(
                                       title: "Mode",
-                                      value: mode,
+                                      value: newMode,
                                       icon: Icons.ac_unit,
-                                      onTap: () => _changeMode(mode == "Cool" ? "Heat" : "Cool"),
+                                      onTap: () => _changeMode(newMode == "Cool" ? "Heat" : "Cool"),
                                     ),
                                   ),
                                 ),
@@ -424,38 +399,27 @@ void _togglePower() async {
                                     height: 100, // Adjust the height as needed
                                     child: FeatureCard(
                                       title: "Fan Speed",
-                                      value: fanSpeed,
+                                      value: newFanSpeed,
                                       icon: Icons.air,
-                                      onTap: () => _changeFanSpeed(fanSpeed == "Auto" ? "High" : "Auto"),
+                                      onTap: () => _changeFanSpeed(newFanSpeed == "Low" ? "High" : "Low"),
                                     ),
                                   ),
                                 ),
                               ],
                             ),
                             SizedBox(height: constraints.maxHeight * 0.02),
+                            ElevatedButton(
+                              onPressed: _applyChanges,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white, // Background color
+                                foregroundColor: Colors.black, // Text color
+                              ),
+                              child: Text('Change'),
+                            ),
+                            SizedBox(height: constraints.maxHeight * 0.06),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
-                                IconButtonFeature(
-                                  label: "Vertical Swing",
-                                  icon: Icons.north,
-                                  isActive: verticalSwingActive,
-                                  onPressed: () {
-                                    setState(() {
-                                      verticalSwingActive = !verticalSwingActive;
-                                    });
-                                  },
-                                ),
-                                IconButtonFeature(
-                                  label: "Horizontal Swing",
-                                  icon: Icons.swap_horiz,
-                                  isActive: horizontalSwingActive,
-                                  onPressed: () {
-                                    setState(() {
-                                      horizontalSwingActive = !horizontalSwingActive;
-                                    });
-                                  },
-                                ),
                                 IconButtonFeature(
                                   label: "Light",
                                   icon: Icons.lightbulb,
@@ -476,29 +440,23 @@ void _togglePower() async {
                                     });
                                   },
                                 ),
-                              ],
-                            ),
-                            SizedBox(height: constraints.maxHeight * 0.02),
-                            Text(
-                              "LED Brightness: ${ledBrightness.toInt()}%",
-                              style: TextStyle(fontSize: 18),
-                            ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.remove),
+                                IconButtonFeature(
+                                  label: "Horizontal Swing",
+                                  icon: Icons.swap_horiz,
+                                  isActive: horizontalSwingActive,
                                   onPressed: () {
                                     setState(() {
-                                      if (ledBrightness > 0) ledBrightness -= 10;
+                                      horizontalSwingActive = !horizontalSwingActive;
                                     });
                                   },
                                 ),
-                                IconButton(
-                                  icon: Icon(Icons.add),
+                                IconButtonFeature(
+                                  label: "Vertical Swing",
+                                  icon: Icons.north,
+                                  isActive: verticalSwingActive,
                                   onPressed: () {
                                     setState(() {
-                                      if (ledBrightness < 100) ledBrightness += 10;
+                                      verticalSwingActive = !verticalSwingActive;
                                     });
                                   },
                                 ),
