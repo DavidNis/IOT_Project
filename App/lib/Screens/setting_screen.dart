@@ -25,20 +25,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _showAuthDialog();
             },
           ),
-          ListTile(
-            leading: Icon(Icons.notifications),
-            title: Text('Notifications'),
-            onTap: () {
-              // Placeholder for notifications settings
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.info),
-            title: Text('About'),
-            onTap: () {
-              // Placeholder for about section
-            },
-          ),
+          // ListTile(
+          //   leading: Icon(Icons.notifications),
+          //   title: Text('Notifications'),
+          //   onTap: () {
+          //     // Placeholder for notifications settings
+          //   },
+          // ),
+          // ListTile(
+          //   leading: Icon(Icons.info),
+          //   title: Text('About'),
+          //   onTap: () {
+          //     // Placeholder for about section
+          //   },
+          // ),
         ],
       ),
     );
