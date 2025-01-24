@@ -5,10 +5,11 @@ import '../widgets/temperature_control.dart';
 import '../widgets/feature_card.dart';
 import '../widgets/icon_button_feature.dart';
 import '../widgets/toggle_row.dart';
-import '../widgets/graphs_and_logs.dart';
+import '../Screens/graphs_and_logs.dart';
 import '../Screens/schedule_screen.dart';
 import '../Screens/timer_screen.dart';
 import '../Screens/climate_react_screen.dart';
+import '../Screens/setting_screen.dart';
 
 class SmartACControl extends StatefulWidget {
   @override
@@ -132,10 +133,23 @@ class _SmartACControlState extends State<SmartACControl> {
     });
   }
 
-  void _changeTemperature(double newTemperature) {
+
+  void _changeTemperature(double newTemperature) async {
     setState(() {
-      this.newTemperature = newTemperature;
+      this.newTemperature = newTemperature; // Update local state
     });
+
+    // Generate the temperature hex code
+    String temperatureHexValue = "F7A" + newTemperature.toInt().toRadixString(16).toUpperCase();
+
+    try {
+      // Update the Firebase nodes
+      await FirebaseDatabase.instance.ref().child('transmitter/temp/code').set(temperatureHexValue);
+      await FirebaseDatabase.instance.ref().child('transmitter/temp/value').set(newTemperature.toString());
+    } catch (e) {
+      // Handle potential errors (e.g., Firebase write issues)
+      print("Failed to update Firebase: $e");
+    }
   }
 
   void _monitorMotionSensor() {
@@ -185,7 +199,9 @@ class _SmartACControlState extends State<SmartACControl> {
 
       // Update temperature
       String temperatureHexValue = "F7A" + (newTemperature.toInt()).toRadixString(16).toUpperCase();
-      await FirebaseDatabase.instance.ref().child('transmitter/temperature/code').set(temperatureHexValue);
+      await FirebaseDatabase.instance.ref().child('transmitter/temp/code').set(temperatureHexValue);
+      
+
 
       // Apply changes to the main variables
       setState(() {
@@ -237,7 +253,11 @@ class _SmartACControlState extends State<SmartACControl> {
               leading: Icon(Icons.settings),
               title: Text('Settings'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(context); // Close the drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => SettingsScreen()),
+                );
               },
             ),
             ListTile(
@@ -276,8 +296,8 @@ class _SmartACControlState extends State<SmartACControl> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => GraphsAndLogsScreen(
-                      temperatureLog: temperatureLog,
-                      humidityLog: [], 
+                    initialTemperature: temperature,
+                    temperatureNotifier: ValueNotifier<double>(newTemperature),
                     ),
                   ),
                 );
