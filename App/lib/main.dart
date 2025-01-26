@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
-import 'Screens/smart_ac_control.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'Screens/login_screen.dart'; // Import the LoginScreen
 
-void main() {
-  runApp(SmartACApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+
+  runApp(MyApp());
 }
 
-class SmartACApp extends StatelessWidget {
+class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: SmartACControl(),
+      title: 'Smart AC',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: LoginScreen(), // Set LoginScreen as the home screen
     );
   }
 }
