@@ -7,6 +7,19 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  User? _user;
+
+  @override
+  void initState() {
+    super.initState();
+    _auth.authStateChanges().listen((User? user) {
+      setState(() {
+        _user = user;
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -14,32 +27,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text('Settings'),
         centerTitle: true,
       ),
-      body: ListView(
-        padding: EdgeInsets.all(16.0),
-        children: [
-          ListTile(
-            leading: Icon(Icons.login),
-            title: Text('Sign In / Sign Up'),
-            onTap: () {
-              // Show the authentication dialog
-              _showAuthDialog();
-            },
-          ),
-          // ListTile(
-          //   leading: Icon(Icons.notifications),
-          //   title: Text('Notifications'),
-          //   onTap: () {
-          //     // Placeholder for notifications settings
-          //   },
-          // ),
-          // ListTile(
-          //   leading: Icon(Icons.info),
-          //   title: Text('About'),
-          //   onTap: () {
-          //     // Placeholder for about section
-          //   },
-          // ),
-        ],
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Display welcome message at the top when signed in
+            if (_user != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20.0),
+                child: Text(
+                  'Welcome back, ${_user?.displayName ?? 'User'}', // This fetches the displayName directly from Firebase
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+              ),
+            // Sign In/Sign Up or Sign Out button
+            if (_user != null)
+              ListTile(
+                leading: Icon(Icons.exit_to_app),
+                title: Text('Sign Out'),
+                onTap: () async {
+                  await _auth.signOut();
+                  setState(() {});
+                },
+              )
+            else
+              ListTile(
+                leading: Icon(Icons.login),
+                title: Text('Sign In / Sign Up'),
+                onTap: () {
+                  _showAuthDialog();
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -58,76 +79,79 @@ class _AuthDialog extends StatefulWidget {
 }
 
 class __AuthDialogState extends State<_AuthDialog> {
-  bool isSignUp = false; // Toggle between Sign In and Sign Up
+  bool isSignUp = false;
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController = TextEditingController();
+  final TextEditingController usernameController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(isSignUp ? 'Sign Up' : 'Sign In'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: emailController,
-            decoration: InputDecoration(labelText: 'Email'),
-          ),
-          TextField(
-            controller: passwordController,
-            decoration: InputDecoration(labelText: 'Password'),
-            obscureText: true,
-          ),
-          if (isSignUp)
+    return GestureDetector(
+      onTap: () {
+        // Close the keyboard when tapping outside of the dialog
+        FocusScope.of(context).unfocus();
+      },
+      child: AlertDialog(
+        title: Text(isSignUp ? 'Sign Up' : 'Sign In'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Only show username field when signing up
+            if (isSignUp)
+              TextField(
+                controller: usernameController,
+                decoration: InputDecoration(labelText: 'Username'),
+              ),
             TextField(
-              controller: confirmPasswordController,
-              decoration: InputDecoration(labelText: 'Confirm Password'),
+              controller: emailController,
+              decoration: InputDecoration(labelText: 'Email'),
+            ),
+            TextField(
+              controller: passwordController,
+              decoration: InputDecoration(labelText: 'Password'),
               obscureText: true,
             ),
-        ],
-      ),
-      actions: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: ElevatedButton.styleFrom(
-                minimumSize: Size(100, 40), // Larger button size
-                textStyle: TextStyle(fontSize: 16), // Larger font size
+            if (isSignUp)
+              TextField(
+                controller: confirmPasswordController,
+                decoration: InputDecoration(labelText: 'Confirm Password'),
+                obscureText: true,
               ),
-              child: Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isSignUp
-                  ? () => _handleSignUp(context)
-                  : () => _handleSignIn(context),
-              style: ElevatedButton.styleFrom(
-                minimumSize: Size(100, 40), // Larger button size
-                textStyle: TextStyle(fontSize: 16), // Larger font size
-              ),
-              child: Text(isSignUp ? 'Sign Up' : 'Sign In'),
-            ),
           ],
         ),
-        Center(
-          child: TextButton(
-            onPressed: () {
-              setState(() {
-                isSignUp = !isSignUp; // Toggle between Sign In and Sign Up
-              });
-            },
-            child: Text(
-              isSignUp
-                  ? 'Already have an account? Sign In'
-                  : "Don't have an account? Sign Up",
-              style: TextStyle(fontSize: 14),
+        actions: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: isSignUp ? () => _handleSignUp(context) : () => _handleSignIn(context),
+                child: Text(isSignUp ? 'Sign Up' : 'Sign In'),
+              ),
+            ],
+          ),
+          Center(
+            child: TextButton(
+              onPressed: () {
+                setState(() {
+                  isSignUp = !isSignUp; // Toggle between Sign Up and Sign In
+                });
+              },
+              child: Text(
+                isSignUp
+                    ? 'Already have an account? Sign In'
+                    : "Don't have an account? Sign Up",
+                style: TextStyle(fontSize: 14),
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -159,8 +183,9 @@ class __AuthDialogState extends State<_AuthDialog> {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
     final confirmPassword = confirmPasswordController.text.trim();
+    final username = usernameController.text.trim();
 
-    if (email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+    if (email.isEmpty || password.isEmpty || confirmPassword.isEmpty || username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please fill in all fields')),
       );
@@ -175,7 +200,14 @@ class __AuthDialogState extends State<_AuthDialog> {
     }
 
     try {
-      await _auth.createUserWithEmailAndPassword(email: email, password: password);
+      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Set the display name to username
+      await userCredential.user?.updateDisplayName(username);
+
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Account created successfully for $email')),
