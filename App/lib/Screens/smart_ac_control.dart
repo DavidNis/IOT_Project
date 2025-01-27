@@ -13,6 +13,9 @@ import '../Screens/timer_screen.dart';
 import '../Screens/climate_react_screen.dart';
 import '../Screens/setting_screen.dart';
 import '../Screens/login_screen.dart';
+//import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
+
 
 class SmartACControl extends StatefulWidget {
   @override
@@ -22,6 +25,7 @@ class SmartACControl extends StatefulWidget {
 class _SmartACControlState extends State<SmartACControl> {
   final List<TemperatureReading> _temperatureLog = [];
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  //StreamSubscription<ConnectivityResult>? _connectivitySubscription;
 
   double temperature = 24;       // AC set temperature
   double outdoorTemperature = 0; // Outdoor temperature fetched from API
@@ -33,6 +37,7 @@ class _SmartACControlState extends State<SmartACControl> {
   bool sleepCurve = false;
   bool myFavorite = false;
   bool isPowerOn = true;
+  bool isOffline = false;
 
   bool verticalSwingActive = false;
   bool horizontalSwingActive = false;
@@ -60,6 +65,7 @@ class _SmartACControlState extends State<SmartACControl> {
     initializeTemperatureLog();
     _monitorMotionSensor();
 
+
     // Start polling the user’s set temperature every 5 seconds
     _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _fetchSetTemperatureFromFirebase();
@@ -70,6 +76,7 @@ class _SmartACControlState extends State<SmartACControl> {
   void dispose() {
     // Cancel the timer when this widget is disposed
     _pollingTimer?.cancel();
+    //_connectivitySubscription?.cancel();
     super.dispose();
   }
 
@@ -82,6 +89,25 @@ class _SmartACControlState extends State<SmartACControl> {
       });
     }
   }
+
+  
+
+  void _showNoConnectionMessage() {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'No internet connection. Please check your connection.',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+
 
   // Continuously listen for indoor temp & humidity from Firebase (DHT sensor)
   Future<void> fetchIndoorData() async {
@@ -346,16 +372,34 @@ class _SmartACControlState extends State<SmartACControl> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(
+            DrawerHeader(
+              decoration: const BoxDecoration(
                 color: Colors.blueAccent,
               ),
-              child: Text(
-                'Menu',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'Menu',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    FirebaseAuth.instance.currentUser?.displayName != null
+                        ? 'Welcome ${FirebaseAuth.instance.currentUser!.displayName}'
+                        : 'Welcome User',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 20,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
               ),
             ),
             ListTile(
