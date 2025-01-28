@@ -34,7 +34,7 @@ class _SmartACControlState extends State<SmartACControl> {
   String mode = "Cool";          // Default mode
   String fanSpeed = "Low";       // Default fan speed
   bool sleepCurve = false;
-  bool myFavorite = false;
+  bool myFavorite = false; // Whether the favorite settings are enabled
   bool isPowerOn = true;
   bool isOffline = false;
 
@@ -45,11 +45,18 @@ class _SmartACControlState extends State<SmartACControl> {
 
   bool isMonitoring = false;
   bool isManualOverride = false;
+  int inactivityTimeout = 20; // Default timeout value
 
   // Local variables to store changes
   String newMode = "Cool";
   String newFanSpeed = "Low";
   double newTemperature = 24;
+
+  Map<String, dynamic> favoriteSettings = {
+    'mode': 'Cool',
+    'fanSpeed': 'Low',
+    'temperature': 24.0,
+  };
 
   // A list of Map entries, each containing a DateTime and temperature
   List<Map<String, dynamic>> temperatureLog = [];
@@ -61,8 +68,11 @@ class _SmartACControlState extends State<SmartACControl> {
     super.initState();
     fetchCurrentTemperature();
     fetchIndoorData();
+    _loadFavoriteSettings();
     initializeTemperatureLog();
     _monitorMotionSensor();
+
+    _listenToFavoriteSettings();
 
 
     // Start polling the user’s set temperature every 5 seconds
@@ -79,6 +89,25 @@ class _SmartACControlState extends State<SmartACControl> {
     super.dispose();
   }
 
+  void _listenToFavoriteSettings() {
+    final DatabaseReference favoriteRef = FirebaseDatabase.instance.ref('transmitter');
+
+    favoriteRef.onValue.listen((event) {
+      if (event.snapshot.exists) {
+        final data = event.snapshot.value as Map<dynamic, dynamic>;
+
+        // Update favorite settings dynamically if the toggle is on
+        if (myFavorite) {
+          setState(() {
+            mode = data['mode']?.toString() ?? 'Cool';
+            fanSpeed = data['fanSpeed']?.toString() ?? 'Low';
+            temperature = double.tryParse(data['temp']?.toString() ?? '24.0') ?? 24.0;
+          });
+        }
+      }
+    });
+  }
+
   // Fetch the current outdoor temperature from Weather API
   Future<void> fetchCurrentTemperature() async {
     double? temp = await WeatherService().getCurrentTemperature();
@@ -89,8 +118,80 @@ class _SmartACControlState extends State<SmartACControl> {
     }
   }
 
-  
+  // Load the favorite settings from Firebase
+  Future<void> _loadFavoriteSettings() async {
+    try {
+      final ref = FirebaseDatabase.instance.ref('transmitter');
+      final snapshot = await ref.get();
 
+      if (snapshot.exists) {
+        final data = snapshot.value as Map<dynamic, dynamic>;
+        setState(() {
+          favoriteSettings = {
+            'mode': data['mode']?.toString() ?? 'Cool',
+            'fanSpeed': data['fanSpeed']?.toString() ?? 'Low',
+            'temperature': double.tryParse(data['temp']?.toString() ?? '24.0') ?? 24.0,
+          };
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load favorite settings: $e');
+    }
+  }
+
+  // apply the favorite settings
+  void _applyFavoriteSettings() async {
+    try {
+      // Fetch favorite settings from Firebase
+      final ref = FirebaseDatabase.instance.ref('transmitter');
+      final snapshot = await ref.get();
+
+      if (snapshot.exists) {
+        final data = snapshot.value as Map<dynamic, dynamic>;
+
+        // Safely extract and update values
+        setState(() {
+          newMode = data['mode']?.toString() ?? 'Cool'; // Default to 'Cool'
+          newFanSpeed = data['fanSpeed']?.toString() ?? 'Low'; // Default to 'Low'
+          newTemperature = double.tryParse(data['temp']?.toString() ?? '24.0') ?? 24.0; // Default to 24.0
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Favorite settings applied successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        throw Exception("Favorite settings not found in Firebase.");
+      }
+    } catch (e) {
+      // Handle errors gracefully
+      debugPrint('Error applying favorite settings: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to apply favorite settings: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  // Callback when the favorite settings are changed
+  void _onFavoriteChanged(Map<String, dynamic> newFavorites) {
+    setState(() {
+      favoriteSettings = newFavorites;
+
+      // If My Favorite is active, apply the new settings immediately
+      if (myFavorite) {
+        _applyFavoriteSettings();
+      }
+    });
+  }
+
+ 
   void _showNoConnectionMessage() {
     final messenger = ScaffoldMessenger.of(context);
     messenger.clearSnackBars();
@@ -104,6 +205,14 @@ class _SmartACControlState extends State<SmartACControl> {
         duration: Duration(seconds: 3),
       ),
     );
+   }
+
+
+  // Callback when the inactivity timeout is changed
+  void _onTimeoutChanged(int newTimeout) {
+    setState(() {
+      inactivityTimeout = newTimeout; // Update the timeout value
+    });
   }
 
 
@@ -428,10 +537,12 @@ class _SmartACControlState extends State<SmartACControl> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => SettingsScreen(
-                      onTimeoutChanged: (newTimeout) {
-                        // Handle the timeout change
-                      },
-                      currentTimeout: 30, // Set the current timeout value
+                      currentTimeout: inactivityTimeout,
+                      onTimeoutChanged: _onTimeoutChanged,
+                      favoriteSettings: favoriteSettings,
+                      onFavoriteChanged: _onFavoriteChanged,
+                      isMyFavoriteActive: myFavorite,
+                      applyFavoriteSettings: _applyFavoriteSettings,
                     ),
                   ),
                 );
@@ -698,6 +809,9 @@ class _SmartACControlState extends State<SmartACControl> {
                                     onChanged: (value) {
                                       setState(() {
                                         myFavorite = value;
+                                        if (myFavorite) {
+                                          _applyFavoriteSettings();
+                                        }
                                       });
                                     },
                                   ),
