@@ -14,7 +14,6 @@ import '../Screens/climate_react_screen.dart';
 import '../Screens/setting_screen.dart';
 import '../Screens/login_screen.dart';
 //import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 
 
 class SmartACControl extends StatefulWidget {
@@ -223,6 +222,25 @@ class _SmartACControlState extends State<SmartACControl> {
     });
   }
 
+  // Define the map for temperature to hex value mapping
+  final Map<int, String> temperatureHexMap = {
+    16: "F7A05F",
+    17: "F710EF",
+    18: "F7906F",
+    19: "F750AF",
+    20: "F730CF",
+    21: "F7B04F",
+    22: "F7708F",
+    23: "F708F7",
+    24: "F78877",
+    25: "F748B7",
+    26: "F7A857",
+    27: "F7A05F",
+    28: "F710EF",
+    29: "F7906F",
+    30: "F750AF",
+  };
+
   // Change the user’s set temperature in Firebase + local state
   void _changeTemperature(double newTemperature) async {
     setState(() {
@@ -330,8 +348,7 @@ class _SmartACControlState extends State<SmartACControl> {
           .set(newFanSpeed);
 
       // Update temperature
-      String temperatureHexValue =
-          "F7A" + newTemperature.toInt().toRadixString(16).toUpperCase();
+          String temperatureHexValue =temperatureHexMap[newTemperature.toInt()] ?? "F7A05F";  
       await FirebaseDatabase.instance
           .ref()
           .child('transmitter/temp/code')
@@ -409,7 +426,14 @@ class _SmartACControlState extends State<SmartACControl> {
                 Navigator.pop(context); // Close the drawer
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => SettingsScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => SettingsScreen(
+                      onTimeoutChanged: (newTimeout) {
+                        // Handle the timeout change
+                      },
+                      currentTimeout: 30, // Set the current timeout value
+                    ),
+                  ),
                 );
               },
             ),
