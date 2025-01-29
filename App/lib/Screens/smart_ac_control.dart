@@ -85,7 +85,7 @@ class _SmartACControlState extends State<SmartACControl> {
     _listenToFavoriteSettings();
 
 
-    // Start polling the user’s set temperature every 5 seconds
+    // Start polling the userג€™s set temperature every 5 seconds
     _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _fetchSetTemperatureFromFirebase();
     });
@@ -314,7 +314,7 @@ void _showErrorMessage() {
     });
   }
 
-  // get the user’s set temperature from firebase under`transmitter/temp/value`
+  // get the userג€™s set temperature from firebase under`transmitter/temp/value`
   // and add it to `temperatureLog` every 5 seconds.
   Future<void> _fetchSetTemperatureFromFirebase() async {
     try {
@@ -404,7 +404,7 @@ void _showErrorMessage() {
     30: "F750AF",
   };
 
-  // Change the user’s set temperature in Firebase + local state
+  // Change the userג€™s set temperature in Firebase + local state
   void _changeTemperature(double newTemperature) async {
     setState(() {
       this.newTemperature = newTemperature; // Update local state
@@ -444,8 +444,8 @@ void _showErrorMessage() {
     }
   }
 
-  /// Monitor the motion sensor to automatically turn off AC if no motion
-  void _monitorMotionSensor() {
+ /// Monitor the motion sensor to automatically turn off AC if no motion
+void _monitorMotionSensor() {
   final DatabaseReference motionSensorRef =
       FirebaseDatabase.instance.ref().child('motionSensor/value');
 
@@ -456,10 +456,10 @@ void _showErrorMessage() {
       if (motionValue == 0) {
         // No motion detected, start inactivity timer
         if (_inactivityTimer == null || !_inactivityTimer!.isActive) {
-          int timeoutMinutes = await _getInactivityTimeout();
-          print("No motion detected. Waiting for $timeoutMinutes minutes before turning off AC.");
+          int timeoutSeconds = await _getInactivityTimeout();
+          print("No motion detected. Waiting for $timeoutSeconds seconds before turning off AC.");
 
-          _inactivityTimer = Timer(Duration(minutes: timeoutMinutes), () {
+          _inactivityTimer = Timer(Duration(seconds: timeoutSeconds), () {
             _turnOffAC();
           });
         }
@@ -471,7 +471,7 @@ void _showErrorMessage() {
   });
 }
 
-/// Fetch inactivityTimeout from Firebase (in minutes)
+/// Fetch inactivityTimeout from Firebase (in seconds)
 Future<int> _getInactivityTimeout() async {
   try {
     final DatabaseReference timeoutRef =
@@ -479,14 +479,13 @@ Future<int> _getInactivityTimeout() async {
     final snapshot = await timeoutRef.get();
 
     if (snapshot.exists) {
-      return int.tryParse(snapshot.value.toString()) ?? 20; // Default to 20 mins
+      return int.tryParse(snapshot.value.toString()) ?? 6; // Default to 6 seconds
     }
   } catch (e) {
     print("Error fetching inactivity timeout: $e");
   }
-  return 20; // Default timeout
+  return 6; // Default timeout
 }
-
 
 /// Reset the inactivity timer if motion is detected
 void _resetInactivityTimer() {
@@ -729,13 +728,13 @@ void _resetInactivityTimer() {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      "Outdoor Temperature: ${outdoorTemperature.toInt()}°C",
+                                      "Outdoor Temperature: ${outdoorTemperature.toInt()}ֲ°C",
                                       style: const TextStyle(
                                           fontSize: 16, color: Colors.black54),
                                     ),
                                     const SizedBox(height: 10),
                                     Text(
-                                      "Indoor Temperature: ${indoorTemperature.toInt()}°C",
+                                      "Indoor Temperature: ${indoorTemperature.toInt()}ֲ°C",
                                       style: const TextStyle(
                                           fontSize: 16, color: Colors.black54),
                                     ),
