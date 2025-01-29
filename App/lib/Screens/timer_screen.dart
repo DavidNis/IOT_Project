@@ -173,16 +173,26 @@ class _TimerScreenState extends State<TimerScreen> {
                 enabled ? FixedExtentScrollPhysics() : NeverScrollableScrollPhysics(),
             onSelectedItemChanged: enabled ? onSelectedItemChanged : null,
             childDelegate: ListWheelChildBuilderDelegate(
-              builder: (context, index) => Center(
-                child: Text(
-                  index.toString().padLeft(2, '0'),
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: enabled ? Colors.black : Colors.grey,
+              builder: (context, index) {
+                bool isSelected = index == selectedValue;
+                return Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.blueAccent : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    child: Text(
+                      index.toString().padLeft(2, '0'),
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? Colors.white : Colors.black,
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
               childCount: itemCount,
             ),
           ),

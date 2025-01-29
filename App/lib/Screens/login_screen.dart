@@ -26,7 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.blue[800]!, Colors.blue[300]!],
+                  colors: [const Color.fromARGB(255, 88, 166, 255)!, const Color.fromARGB(255, 189, 222, 249)!],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -167,23 +167,52 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Handle Sign In
   void _signIn() async {
-    try {
-      final email = _emailController.text;
-      final password = _passwordController.text;
+    final email = _emailController.text;
+    final password = _passwordController.text;
 
+    if (email.isEmpty || password.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please fill in all fields')),
+        );
+      }
+      return;
+    }
+
+    try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => SmartACControl()),
-      );
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => SmartACControl()),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String message;
+      if (e.code == 'user-not-found') {
+        message = 'The email does not exist. Please check it or sign up.';
+      } else if (e.code == 'wrong-password') {
+        message = 'Check your email and password';
+      } else if (e.code == 'invalid-credential' || e.code == 'invalid-verification-code' || e.code == 'invalid-verification-id') {
+        message = 'Please check your email and password';
+      } else {
+        message = 'Failed to sign in: ${e.message}';
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to sign in: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to sign in: $e')),
+        );
+      }
     }
   }
 
@@ -196,16 +225,20 @@ class _LoginScreenState extends State<LoginScreen> {
       final username = _usernameController.text;
 
       if (email.isEmpty || password.isEmpty || username.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please fill in all fields')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Please fill in all fields')),
+          );
+        }
         return;
       }
 
       if (password != confirmPassword) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Passwords do not match')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Passwords do not match')),
+          );
+        }
         return;
       }
 
@@ -217,14 +250,30 @@ class _LoginScreenState extends State<LoginScreen> {
       // Set the display name to username
       await userCredential.user?.updateDisplayName(username);
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => SmartACControl()),
-      );
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => SmartACControl()),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String message;
+      if (e.code == 'weak-password') {
+        message = 'Password should be at least 6 characters';
+      } else {
+        message = 'Failed to sign up: ${e.message}';
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to sign up: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to sign up: $e')),
+        );
+      }
     }
   }
 }
