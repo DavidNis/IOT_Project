@@ -60,7 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
   }
-  
+
       widget.onTimeoutChanged(timeout); // Update the main screen timeout
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,6 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
   }
+
 
   void _saveFavoriteSettingsToFirebase(Map<String, dynamic> favorites) async {
     try {

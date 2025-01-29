@@ -55,6 +55,8 @@ class _SmartACControlState extends State<SmartACControl> {
   int randomSeconds = 5;
   String randomValue = '';
   Timer? _timer;
+  Timer? _inactivityTimer;
+
   //bool showError = false;
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _snackBarController;
 
@@ -444,24 +446,56 @@ void _showErrorMessage() {
 
   /// Monitor the motion sensor to automatically turn off AC if no motion
   void _monitorMotionSensor() {
-    final DatabaseReference motionSensorRef =
-        FirebaseDatabase.instance.ref().child('motionSensor/value');
-    motionSensorRef.onValue.listen((event) {
-      if (event.snapshot.value == 0) {
-        if (!isMonitoring) {
-          isMonitoring = true;
-          Future.delayed(const Duration(seconds: 6), () {
-            if (isMonitoring && !isManualOverride) {
-              _turnOffAC();
-            }
+  final DatabaseReference motionSensorRef =
+      FirebaseDatabase.instance.ref().child('motionSensor/value');
+
+  motionSensorRef.onValue.listen((event) async {
+    if (event.snapshot.exists && event.snapshot.value != null) {
+      int motionValue = int.tryParse(event.snapshot.value.toString()) ?? 1;
+
+      if (motionValue == 0) {
+        // No motion detected, start inactivity timer
+        if (_inactivityTimer == null || !_inactivityTimer!.isActive) {
+          int timeoutMinutes = await _getInactivityTimeout();
+          print("No motion detected. Waiting for $timeoutMinutes minutes before turning off AC.");
+
+          _inactivityTimer = Timer(Duration(minutes: timeoutMinutes), () {
+            _turnOffAC();
           });
         }
       } else {
-        isMonitoring = false;
-        isManualOverride = false;
+        // Motion detected, reset timer
+        _resetInactivityTimer();
       }
-    });
+    }
+  });
+}
+
+/// Fetch inactivityTimeout from Firebase (in minutes)
+Future<int> _getInactivityTimeout() async {
+  try {
+    final DatabaseReference timeoutRef =
+        FirebaseDatabase.instance.ref().child('transmitter/inactivityTimeout');
+    final snapshot = await timeoutRef.get();
+
+    if (snapshot.exists) {
+      return int.tryParse(snapshot.value.toString()) ?? 20; // Default to 20 mins
+    }
+  } catch (e) {
+    print("Error fetching inactivity timeout: $e");
   }
+  return 20; // Default timeout
+}
+
+
+/// Reset the inactivity timer if motion is detected
+void _resetInactivityTimer() {
+  if (_inactivityTimer != null) {
+    _inactivityTimer!.cancel();
+    _inactivityTimer = null;
+  }
+}
+
 
   /// Turn off AC via IR command
   Future<void> _turnOffAC() async {
