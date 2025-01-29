@@ -35,6 +35,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     selectedMode = widget.favoriteSettings['mode'] ?? 'Cool';
     selectedFanSpeed = widget.favoriteSettings['fanSpeed'] ?? 'Low';
     selectedTemperature = widget.favoriteSettings['temperature'] ?? 24.0;
+
+    // Ensure selectedMode and selectedFanSpeed are valid
+    if (!['Cool', 'Heat'].contains(selectedMode)) {
+      selectedMode = 'Cool';
+    }
+    if (!['Low', 'High'].contains(selectedFanSpeed)) {
+      selectedFanSpeed = 'Low';
+    }
   }
 
   void _saveTimeoutToFirebase(int timeout) async {
@@ -42,13 +50,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await FirebaseDatabase.instance.ref('transmitter').update({
         'inactivityTimeout': timeout,
       });
+      if(mounted){
+
+    
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Inactivity timeout saved successfully!'),
           backgroundColor: Colors.green,
         ),
       );
-
+  }
+  
       widget.onTimeoutChanged(timeout); // Update the main screen timeout
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -215,7 +227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
+     ),
+);
+}
 }
