@@ -52,6 +52,13 @@ class _SmartACControlState extends State<SmartACControl> {
   String newFanSpeed = "Low";
   double newTemperature = 24;
 
+
+  String randomValue = '';
+  Timer? _timer;
+  //bool showError = false;
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _snackBarController;
+
+  
   Map<String, dynamic> favoriteSettings = {
     'mode': 'Cool',
     'fanSpeed': 'Low',
@@ -71,6 +78,7 @@ class _SmartACControlState extends State<SmartACControl> {
     _loadFavoriteSettings();
     initializeTemperatureLog();
     _monitorMotionSensor();
+    _startListeningToRandomValue();
 
     _listenToFavoriteSettings();
 
@@ -81,10 +89,54 @@ class _SmartACControlState extends State<SmartACControl> {
     });
   }
 
+
+  void _startListeningToRandomValue() {
+    DatabaseReference randomRef = FirebaseDatabase.instance.ref().child('random');
+    randomRef.onValue.listen((event) {
+      String newValue = event.snapshot.value.toString();
+      if (randomValue != newValue) {
+        setState(() {
+          randomValue = newValue;
+        });
+        _hideErrorMessage();
+        _resetTimer();
+      }
+    });
+  }
+
+void _resetTimer() {
+    _timer?.cancel();
+    _timer = Timer(Duration(seconds: 5), () {
+      _showErrorMessage();
+    });
+  }
+
+void _showErrorMessage() {
+  _snackBarController = ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Center(
+        child: Text(
+          'The AC is not connected',
+          style: TextStyle(color: Colors.white),
+        ),
+      ),
+      backgroundColor: Colors.red,
+      duration: Duration(hours: 1), // Indefinite duration
+    ),
+  );
+}
+
+  void _hideErrorMessage() {
+    _snackBarController?.close();
+  }
+
+
   @override
   void dispose() {
     // Cancel the timer when this widget is disposed
     _pollingTimer?.cancel();
+    _timer?.cancel();
+
     //_connectivitySubscription?.cancel();
     super.dispose();
   }
@@ -357,9 +409,9 @@ class _SmartACControlState extends State<SmartACControl> {
     });
 
     // Generate the temperature hex code
-    String temperatureHexValue =
-        "F7A" + newTemperature.toInt().toRadixString(16).toUpperCase();
+    String temperatureHexValue =temperatureHexMap[newTemperature.toInt()] ?? "F7A05F";  
 
+/*
     try {
       // Update the Firebase nodes
       await FirebaseDatabase.instance
@@ -373,6 +425,7 @@ class _SmartACControlState extends State<SmartACControl> {
     } catch (e) {
       print("Failed to update Firebase: $e");
     }
+    */
   }
 
     void _signOut() async {
@@ -462,7 +515,10 @@ class _SmartACControlState extends State<SmartACControl> {
           .ref()
           .child('transmitter/temp/code')
           .set(temperatureHexValue);
-
+      await FirebaseDatabase.instance
+                .ref()
+                .child('transmitter/temp/value')
+                .set(newTemperature);
       // Apply changes to the main variables
       setState(() {
         mode = newMode;
@@ -724,15 +780,25 @@ class _SmartACControlState extends State<SmartACControl> {
                                 ),
                               ],
                             ),
-                            SizedBox(height: constraints.maxHeight * 0.02),
-                            ElevatedButton(
-                              onPressed: _applyChanges,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: Colors.black,
-                              ),
-                              child: const Text('Change'),
-                            ),
+                                                        SizedBox(height: constraints.maxHeight * 0.02),
+
+                            SizedBox(
+  width: double.infinity, // Full width
+  height: 60, // Increase height for a longer button
+  child: ElevatedButton(
+    onPressed: _applyChanges,
+    style: ElevatedButton.styleFrom(
+      backgroundColor: const Color.fromARGB(255, 86, 143, 240), // Bolder color
+      foregroundColor: Colors.white, // White text for contrast
+      textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), // Bigger, bold text
+      padding: const EdgeInsets.symmetric(vertical: 16), // Extra padding for better touch area
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8), // Slightly rounded corners
+      ),
+    ),
+    child: const Text('Press to Set AC Settings'), // Button text
+  ),
+),
                             SizedBox(height: constraints.maxHeight * 0.06),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
