@@ -1,6 +1,21 @@
-# smart_ac
+# Smart AC Control
 
-A new Flutter project.
+Submitters:
+David Nisanov
+Wijdan Eslim
+Mazal Sinaniev
+
+Project description:
+An open-source smart remote solution designed to modernize how air conditioners are controlled. This project leverages an ESP32 microcontroller, IR transmitter, IR receiver, and sensors to provide seamless integration with a custom-built Flutter application. Users can remotely control their AC, monitor environmental conditions, and automate operations, enhancing comfort and energy efficiency.
+
+Smart AC Hardware:
+- DHT Sensor: Monitors and measures the current room temperature to provide precise control.
+- Radar Sensor: Detects motion within its range to enable automated responses, such as turning the AC off when no motion is detected.
+- IR Transmitter and Receiver: Controls the AC via infrared signals and can replicate remote commands.
+- continue...
+- 
+
+
 
 ## Getting Started
 
