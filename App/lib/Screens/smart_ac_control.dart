@@ -52,7 +52,7 @@ class _SmartACControlState extends State<SmartACControl> {
   String newFanSpeed = "Low";
   double newTemperature = 24;
 
-
+  int randomSeconds = 5;
   String randomValue = '';
   Timer? _timer;
   //bool showError = false;
@@ -106,7 +106,7 @@ class _SmartACControlState extends State<SmartACControl> {
 
 void _resetTimer() {
     _timer?.cancel();
-    _timer = Timer(Duration(seconds: 5), () {
+    _timer = Timer(Duration(seconds: randomSeconds), () {
       _showErrorMessage();
     });
   }
