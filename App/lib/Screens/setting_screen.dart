@@ -3,7 +3,7 @@ import 'package:firebase_database/firebase_database.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Function(int) onTimeoutChanged; // Callback for inactivity timeout changes
-  final int currentTimeout; // Current timeout in minutes
+  final int currentTimeout; // Current timeout in seconds
   final Function(Map<String, dynamic>) onFavoriteChanged; // Callback for favorite settings
   final Map<String, dynamic> favoriteSettings; // Current favorite settings
   final bool isMyFavoriteActive; // Whether My Favorite toggle is active
@@ -28,6 +28,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String selectedFanSpeed;
   late double selectedTemperature;
 
+  final List<int> timeoutOptions = [
+    10, 20, 30, 40, 50, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -51,16 +55,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'inactivityTimeout': timeout,
       });
       if(mounted){
-
-    
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Inactivity timeout saved successfully!'),
           backgroundColor: Colors.green,
         ),
       );
-  }
-
+      }
       widget.onTimeoutChanged(timeout); // Update the main screen timeout
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,7 +72,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
   }
-
 
   void _saveFavoriteSettingsToFirebase(Map<String, dynamic> favorites) async {
     try {
@@ -112,23 +112,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           children: [
             const Text(
-              "Inactivity Timeout (minutes):",
+              "Inactivity Timeout:",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             Slider(
-              value: selectedTimeout.toDouble(),
-              min: 1,
-              max: 30,
-              divisions: 30,
-              label: "$selectedTimeout min",
+              value: timeoutOptions.indexOf(selectedTimeout).toDouble(),
+              min: 0,
+              max: (timeoutOptions.length - 1).toDouble(),
+              divisions: timeoutOptions.length - 1,
+              label: selectedTimeout < 60
+                  ? "$selectedTimeout seconds"
+                  : "${(selectedTimeout / 60).toStringAsFixed(0)} minutes",
               onChanged: (value) {
                 setState(() {
-                  selectedTimeout = value.toInt();
+                  selectedTimeout = timeoutOptions[value.toInt()];
                 });
               },
             ),
             Text(
-              "Turn off AC after $selectedTimeout minutes of no motion.",
+              selectedTimeout < 60
+                  ? "Turn off AC after $selectedTimeout seconds of no motion."
+                  : "Turn off AC after ${(selectedTimeout / 60).toStringAsFixed(0)} minutes of no motion.",
               style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 20),
@@ -194,7 +198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               min: 16.0,
               max: 30.0,
               divisions: 14,
-              label: "${selectedTemperature.toInt()}°C",
+              label: "${selectedTemperature.toInt()}ֲ°C",
               onChanged: (value) {
                 setState(() {
                   selectedTemperature = value;
@@ -202,7 +206,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             Text(
-              "Set temperature to ${selectedTemperature.toInt()}°C.",
+              "Set temperature to ${selectedTemperature.toInt()}ֲ°C.",
               style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 20),
@@ -228,7 +232,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
-     ),
-);
-}
+      ),
+    );
+  }
 }
