@@ -25,6 +25,8 @@ class _SmartACControlState extends State<SmartACControl> {
   final List<TemperatureReading> _temperatureLog = [];
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   //StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  //final Connectivity _connectivity = Connectivity();
+  //ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _connectionSnackBarController;
 
   double temperature = 24;       // AC set temperature
   double outdoorTemperature = 0; // Outdoor temperature fetched from API
@@ -36,7 +38,7 @@ class _SmartACControlState extends State<SmartACControl> {
   bool sleepCurve = false;
   bool myFavorite = false; // Whether the favorite settings are enabled
   bool isPowerOn = true;
-  bool isOffline = false;
+  bool isConnected = true;
 
   bool verticalSwingActive = false;
   bool horizontalSwingActive = false;
@@ -81,6 +83,7 @@ class _SmartACControlState extends State<SmartACControl> {
     initializeTemperatureLog();
     _monitorMotionSensor();
     _startListeningToRandomValue();
+    // _checkConnection();
 
     _listenToFavoriteSettings();
 
@@ -90,6 +93,43 @@ class _SmartACControlState extends State<SmartACControl> {
       _fetchSetTemperatureFromFirebase();
     });
   }
+
+  // Future<void> _checkConnection() async {
+  //   final connectivityResult = await _connectivity.checkConnectivity();
+  //   _updateConnectionStatus(connectivityResult);
+  // }
+
+  // void _updateConnectionStatus(ConnectivityResult result) {
+  //   final hasInternet = result == ConnectivityResult.mobile ||
+  //       result == ConnectivityResult.wifi;
+
+  //   if (!hasInternet) {
+  //     _showNoConnectionMessage();
+  //   } else {
+  //     _hideNoConnectionMessage();
+  //   }
+
+  //   setState(() {
+  //     isConnected = hasInternet;
+  //   });
+  // }
+
+  // void _showNoConnectionMessage() {
+  //   _connectionSnackBarController = ScaffoldMessenger.of(context).showSnackBar(
+  //     const SnackBar(
+  //       content: Text('No connection'),
+  //       backgroundColor: Colors.red,
+  //       duration: Duration(days: 1), // Persistent until hidden
+  //     ),
+  //   );
+  // }
+
+  // void _hideNoConnectionMessage() {
+  //   _connectionSnackBarController?.close();
+  //   _connectionSnackBarController = null;
+  // }
+
+
 
 
   void _startListeningToRandomValue() {
@@ -196,32 +236,24 @@ void _showErrorMessage() {
   // apply the favorite settings
   void _applyFavoriteSettings() async {
     try {
-      // Fetch favorite settings from Firebase
-      final ref = FirebaseDatabase.instance.ref('transmitter');
-      final snapshot = await ref.get();
+      // Use local favorite settings
+      setState(() {
+        newMode = favoriteSettings['mode'];
+        newFanSpeed = favoriteSettings['fanSpeed'];
+        newTemperature = favoriteSettings['temperature'];
+      });
 
-      if (snapshot.exists) {
-        final data = snapshot.value as Map<dynamic, dynamic>;
+      // Apply these changes to Firebase
+      await _applyChanges();
 
-        // Safely extract and update values
-        setState(() {
-          newMode = data['mode']?.toString() ?? 'Cool'; // Default to 'Cool'
-          newFanSpeed = data['fanSpeed']?.toString() ?? 'Low'; // Default to 'Low'
-          newTemperature = double.tryParse(data['temp']?.toString() ?? '24.0') ?? 24.0; // Default to 24.0
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Favorite settings applied successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      } else {
-        throw Exception("Favorite settings not found in Firebase.");
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Favorite settings applied successfully!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
     } catch (e) {
-      // Handle errors gracefully
       debugPrint('Error applying favorite settings: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -245,21 +277,6 @@ void _showErrorMessage() {
     });
   }
 
- 
-  void _showNoConnectionMessage() {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text(
-          'No internet connection. Please check your connection.',
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.red,
-        duration: Duration(seconds: 3),
-      ),
-    );
-   }
 
 
   // Callback when the inactivity timeout is changed
@@ -698,6 +715,7 @@ void _resetInactivityTimer() {
           ],
         ),
       ),
+      
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
@@ -706,6 +724,17 @@ void _resetInactivityTimer() {
               child: IntrinsicHeight(
                 child: Column(
                   children: [
+                    if (!isConnected)
+                    Container(
+                      width: double.infinity,
+                      color: Colors.red,
+                      padding: const EdgeInsets.all(8.0),
+                      child: const Text(
+                        'No Internet Connection',
+                        style: TextStyle(color: Colors.white),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                     Container(
                       width: constraints.maxWidth,
                       decoration: BoxDecoration(
