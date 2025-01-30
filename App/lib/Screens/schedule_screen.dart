@@ -15,7 +15,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   String acState = "On";
   String mode = "Heat";
   double temperature = 24;
-  String fanSpeed = "Medium";
+  String fanSpeed = "Low";
 
   final DatabaseReference scheduleRef = FirebaseDatabase.instance.ref().child('Schedule');
   StreamSubscription<DatabaseEvent>? _scheduleSubscription;
@@ -234,7 +234,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                     trailing: DropdownButton<String>(
                       value: mode,
                       onChanged: (value) => setState(() => mode = value!),
-                      items: ["Heat", "Cool", "Fan"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      items: ["Heat", "Cool"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     ),
                   ),
                   ListTile(
@@ -242,7 +242,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                     trailing: DropdownButton<String>(
                       value: fanSpeed,
                       onChanged: (value) => setState(() => fanSpeed = value!),
-                      items: ["Low", "Medium", "High"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      items: ["Low", "High"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     ),
                   ),
                   ListTile(
@@ -289,7 +289,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
+),
+);
+}
 }
