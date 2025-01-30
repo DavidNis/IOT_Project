@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 class SettingsScreen extends StatefulWidget {
-  final Function(int) onTimeoutChanged; // Callback for inactivity timeout changes
-  final int currentTimeout; // Current timeout in seconds
-  final Function(Map<String, dynamic>) onFavoriteChanged; // Callback for favorite settings
-  final Map<String, dynamic> favoriteSettings; // Current favorite settings
-  final bool isMyFavoriteActive; // Whether My Favorite toggle is active
-  final Function applyFavoriteSettings; // Callback to apply favorite settings immediately
+  final Function(int) onTimeoutChanged;
+  final int currentTimeout;
+  final Function(Map<String, dynamic>) onFavoriteChanged;
+  final Map<String, dynamic> favoriteSettings;
+  final bool isMyFavoriteActive;
+  final Function applyFavoriteSettings;
 
   SettingsScreen({
     required this.onTimeoutChanged,
@@ -40,7 +40,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     selectedFanSpeed = widget.favoriteSettings['fanSpeed'] ?? 'Low';
     selectedTemperature = widget.favoriteSettings['temperature'] ?? 24.0;
 
-    // Ensure selectedMode and selectedFanSpeed are valid
     if (!['Cool', 'Heat'].contains(selectedMode)) {
       selectedMode = 'Cool';
     }
@@ -54,15 +53,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await FirebaseDatabase.instance.ref('transmitter').update({
         'inactivityTimeout': timeout,
       });
-      if(mounted){
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Inactivity timeout saved successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Inactivity timeout saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
-      widget.onTimeoutChanged(timeout); // Update the main screen timeout
+      widget.onTimeoutChanged(timeout);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -73,28 +72,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _saveFavoriteSettingsToFirebase(Map<String, dynamic> favorites) async {
+  Future<void> _applyFavoriteSettingsToFirebase(Map<String, dynamic> favorites) async {
     try {
       await FirebaseDatabase.instance.ref('transmitter').update({
         'mode': favorites['mode'],
         'fanSpeed': favorites['fanSpeed'],
         'temp': favorites['temperature'],
       });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Favorite settings saved successfully!'),
+          content: Text('Favorite settings applied successfully!'),
           backgroundColor: Colors.green,
         ),
       );
-
-      // If "My Favorite" is active, apply the new settings immediately
-      if (widget.isMyFavoriteActive) {
-        widget.applyFavoriteSettings();
-      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to save favorite settings: $e'),
+          content: Text('Failed to apply favorite settings: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -137,11 +132,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Save Timeout Button
             Center(
               child: ElevatedButton(
                 onPressed: () {
-                  // Save timeout to Firebase
                   _saveTimeoutToFirebase(selectedTimeout);
                 },
                 child: const Text('Save Timeout Changes'),
@@ -155,7 +148,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Favorite Mode
             const Text("Mode:"),
             DropdownButton<String>(
               value: selectedMode,
@@ -173,7 +165,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Favorite Fan Speed
             const Text("Fan Speed:"),
             DropdownButton<String>(
               value: selectedFanSpeed,
@@ -191,14 +182,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Favorite Temperature
             const Text("Temperature:"),
             Slider(
               value: selectedTemperature,
               min: 16.0,
               max: 30.0,
               divisions: 14,
-              label: "${selectedTemperature.toInt()}ֲ°C",
+              label: "${selectedTemperature.toInt()}°C",
               onChanged: (value) {
                 setState(() {
                   selectedTemperature = value;
@@ -206,26 +196,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             Text(
-              "Set temperature to ${selectedTemperature.toInt()}ֲ°C.",
+              "Set temperature to ${selectedTemperature.toInt()}°C.",
               style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 20),
 
-            // Save Changes Button for Favorites
             Center(
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   final updatedFavorites = {
                     'mode': selectedMode,
                     'fanSpeed': selectedFanSpeed,
                     'temperature': selectedTemperature,
                   };
 
-                  // Save the favorite settings locally
+                  // Update the local favorite settings
                   widget.onFavoriteChanged(updatedFavorites);
 
-                  // Save the favorite settings to Firebase
-                  _saveFavoriteSettingsToFirebase(updatedFavorites);
+                  // Apply to Firebase only if the toggle is active
+                  if (widget.isMyFavoriteActive) {
+                    await _applyFavoriteSettingsToFirebase(updatedFavorites);
+                  }
                 },
                 child: const Text('Save Favorite Settings'),
               ),
