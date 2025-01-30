@@ -84,6 +84,7 @@ class _SmartACControlState extends State<SmartACControl> {
     _monitorMotionSensor();
     _startListeningToRandomValue();
     // _checkConnection();
+    _loadHistoricalTemperatureData();
 
     _listenToFavoriteSettings();
 
@@ -93,6 +94,28 @@ class _SmartACControlState extends State<SmartACControl> {
       _fetchSetTemperatureFromFirebase();
     });
   }
+
+  void _loadHistoricalTemperatureData() async {
+  try {
+    final DatabaseReference logRef = FirebaseDatabase.instance.ref('temperatureLog');
+    final DataSnapshot snapshot = await logRef.get();
+
+    if (snapshot.exists) {
+      final Map<dynamic, dynamic> logs = snapshot.value as Map<dynamic, dynamic>;
+      logs.forEach((key, value) {
+        final DateTime timestamp = DateTime.fromMillisecondsSinceEpoch(value['timestamp']);
+        final double temp = (value['value'] as num).toDouble();
+        _temperatureLog.add(TemperatureReading(timestamp: timestamp, value: temp));
+      });
+
+      // Sort logs by timestamp (oldest first)
+      _temperatureLog.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      setState(() {});
+    }
+  } catch (e) {
+    debugPrint('Error loading historical data: $e');
+  }
+}
 
   // Future<void> _checkConnection() async {
   //   final connectivityResult = await _connectivity.checkConnectivity();
@@ -333,34 +356,39 @@ void _showErrorMessage() {
 
   // get the userג€™s set temperature from firebase under`transmitter/temp/value`
   // and add it to `temperatureLog` every 5 seconds.
-  Future<void> _fetchSetTemperatureFromFirebase() async {
-    try {
-      final ref = FirebaseDatabase.instance.ref('transmitter/temp/value');
-      final snapshot = await ref.get();
+// In _SmartACControlState of smart_ac_control.dart
+Future<void> _fetchSetTemperatureFromFirebase() async {
+  try {
+    final ref = FirebaseDatabase.instance.ref('transmitter/temp/value');
+    final snapshot = await ref.get();
 
-      if (snapshot.exists) {
-        final dataStr = snapshot.value.toString(); // e.g. "23.0"
-        final parsed = double.tryParse(dataStr);
+    if (snapshot.exists) {
+      final dataStr = snapshot.value.toString();
+      final parsed = double.tryParse(dataStr);
 
-        if (parsed != null) {
-          setState(() {
-            // add new reading
-            _temperatureLog.add(
-              TemperatureReading(timestamp: DateTime.now(), value: parsed),
-            );
+      if (parsed != null) {
+        // Push to historical log in Firebase
+        final logRef = FirebaseDatabase.instance.ref('temperatureLog').push();
+        await logRef.set({
+          'timestamp': ServerValue.timestamp,
+          'value': parsed,
+        });
 
-            // if we have more than 60 items (for 5 min at 5-second intervals),
-            // remove the oldest item.
-            if (_temperatureLog.length > 60) {
-              _temperatureLog.removeAt(0);
-            }
-          });
-        }
+        setState(() {
+          _temperatureLog.add(
+            TemperatureReading(timestamp: DateTime.now(), value: parsed),
+          );
+
+          if (_temperatureLog.length > 60) {
+            _temperatureLog.removeAt(0);
+          }
+        });
       }
-    } catch (e) {
-      debugPrint('Error fetching temperature: $e');
     }
+  } catch (e) {
+    debugPrint('Error fetching temperature: $e');
   }
+}
 
   // Toggle the AC power on/off (IR code) via Firebase
   void _togglePower() async {
