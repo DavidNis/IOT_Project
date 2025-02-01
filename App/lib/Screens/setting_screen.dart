@@ -4,19 +4,29 @@ import 'package:firebase_database/firebase_database.dart';
 class SettingsScreen extends StatefulWidget {
   final Function(int) onTimeoutChanged;
   final int currentTimeout;
+
+  // Callback that notifies the parent widget about updated favorites
   final Function(Map<String, dynamic>) onFavoriteChanged;
+
+  // The parent’s current favorite settings
   final Map<String, dynamic> favoriteSettings;
+
+  // Whether "My Favorite" toggle is active
   final bool isMyFavoriteActive;
+
+  // The parent’s method to apply favorites to the AC (if needed),
+  // but we won't be calling it here (since we only save to "favorites" in Firebase).
   final Function applyFavoriteSettings;
 
-  SettingsScreen({
+  const SettingsScreen({
+    Key? key,
     required this.onTimeoutChanged,
     required this.currentTimeout,
     required this.onFavoriteChanged,
     required this.favoriteSettings,
     required this.isMyFavoriteActive,
     required this.applyFavoriteSettings,
-  });
+  }) : super(key: key);
 
   @override
   _SettingsScreenState createState() => _SettingsScreenState();
@@ -28,6 +38,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String selectedFanSpeed;
   late double selectedTemperature;
 
+  String newMode = "Cool";
+  String newFanSpeed = "Low";
+  double newTemperature = 24.0;
+
+  // Options for inactivity timeout in seconds
   final List<int> timeoutOptions = [
     10, 20, 30, 40, 50, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600
   ];
@@ -35,11 +50,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+
+        _loadInitialSettingsFromFirebase();
+
+
+    // Initialize local state for inactivity timeout
     selectedTimeout = widget.currentTimeout;
+
+    // Initialize local state for favorite settings
     selectedMode = widget.favoriteSettings['mode'] ?? 'Cool';
     selectedFanSpeed = widget.favoriteSettings['fanSpeed'] ?? 'Low';
     selectedTemperature = widget.favoriteSettings['temperature'] ?? 24.0;
 
+    // Ensure valid defaults for Mode and Fan Speed
     if (!['Cool', 'Heat'].contains(selectedMode)) {
       selectedMode = 'Cool';
     }
@@ -48,6 +71,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+ Future<void> _loadInitialSettingsFromFirebase() async {
+    try {
+      // Reference your /favorites node
+      final ref = FirebaseDatabase.instance.ref('favorites');
+      final snapshot = await ref.get();
+
+      if (snapshot.exists) {
+        final data = snapshot.value as Map<dynamic, dynamic>;
+        
+        // Safely parse the data and update local states
+        setState(() {
+          selectedMode = data['mode']?.toString() ?? 'Cool';
+          selectedFanSpeed = data['fanSpeed']?.toString() ?? 'Low';
+          selectedTemperature =
+              double.tryParse(data['temperature']?.toString() ?? '24.0') ?? 24.0;
+        });
+      } else {
+        print('No favorite settings found in Firebase.');
+      }
+    } catch (e) {
+      print('Error fetching initial settings: $e');
+    }
+  }
+
+  /// Save the user's selected inactivity timeout to Firebase under "transmitter/inactivityTimeout"
   void _saveTimeoutToFirebase(int timeout) async {
     try {
       await FirebaseDatabase.instance.ref('transmitter').update({
@@ -61,7 +109,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
-      widget.onTimeoutChanged(timeout);
+      widget.onTimeoutChanged(timeout); // Notify parent widget
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -72,24 +120,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _applyFavoriteSettingsToFirebase(Map<String, dynamic> favorites) async {
+  /// Save the user's favorite settings to Firebase **under "favorites"** only
+  /// This will NOT change AC or transmit anything.
+  Future<void> _saveFavoriteSettingsToFirebase(
+      Map<String, dynamic> favorites) async {
     try {
-      await FirebaseDatabase.instance.ref('transmitter').update({
+      // Save them under /favorites node (or any path you prefer)
+      await FirebaseDatabase.instance.ref('favorites').set({
         'mode': favorites['mode'],
         'fanSpeed': favorites['fanSpeed'],
-        'temp': favorites['temperature'],
+        'temperature': favorites['temperature'],
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Favorite settings applied successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Favorite settings saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to apply favorite settings: $e'),
+          content: Text('Failed to save favorite settings: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -106,6 +160,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(16.0),
         child: ListView(
           children: [
+            // -------------------------- TIMEOUT SETTING -------------------------
             const Text(
               "Inactivity Timeout:",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -142,12 +197,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const Divider(height: 32),
 
+            // ----------------------- FAVORITE SETTINGS ------------------------
             const Text(
               "Favorite Settings:",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
 
+            // Mode
             const Text("Mode:"),
             DropdownButton<String>(
               value: selectedMode,
@@ -165,6 +222,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
 
+            // Fan Speed
             const Text("Fan Speed:"),
             DropdownButton<String>(
               value: selectedFanSpeed,
@@ -182,6 +240,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
 
+            // Temperature
             const Text("Temperature:"),
             Slider(
               value: selectedTemperature,
@@ -210,13 +269,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'temperature': selectedTemperature,
                   };
 
-                  // Update the local favorite settings
+                  // 1. Update the local favorite settings in the parent
                   widget.onFavoriteChanged(updatedFavorites);
 
-                  // Apply to Firebase only if the toggle is active
-                  if (widget.isMyFavoriteActive) {
-                    await _applyFavoriteSettingsToFirebase(updatedFavorites);
-                  }
+                  // 2. Always save to "favorites" in Firebase,
+                  //    regardless of whether "My Favorite" is active
+                  //    (or you can conditionally do so if you prefer).
+                  await _saveFavoriteSettingsToFirebase(updatedFavorites);
+
+                  // 3. IMPORTANT: We do NOT call `applyFavoriteSettings` here,
+                  //    because you said you don't want it to update the AC or transmit anything.
+                  //    So we do nothing else.
                 },
                 child: const Text('Save Favorite Settings'),
               ),

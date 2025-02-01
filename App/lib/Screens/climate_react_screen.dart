@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class ClimateReactScreen extends StatefulWidget {
   @override
@@ -6,6 +7,8 @@ class ClimateReactScreen extends StatefulWidget {
 }
 
 class _ClimateReactScreenState extends State<ClimateReactScreen> {
+  final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
+
   double tempAbove = 0; // Temperature when AC reacts above
   double tempBelow = 0; // Temperature when AC reacts below
   bool changeACStateAbove = false;
@@ -14,14 +17,59 @@ class _ClimateReactScreenState extends State<ClimateReactScreen> {
   // Settings for "Change AC State"
   String acStateAbove = "On";
   String acStateBelow = "On";
-  String modeAbove = "Heat";
-  String modeBelow = "Cool";
-  String fanLevelAbove = "Auto";
-  String fanLevelBelow = "Auto";
-  String swingAbove = "Stopped (auto)";
-  String swingBelow = "Stopped (auto)";
+  String modeAbove = "Cool";
+  String modeBelow = "Heat";
+  String fanLevelAbove = "Low";
+  String fanLevelBelow = "Low";
+  String swingAbove = "Stopped";
+  String swingBelow = "Stopped";
   int temperatureAbove = 24;
   int temperatureBelow = 22;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettingsFromFirebase();
+  }
+
+  /// Fetch the existing settings from Firebase and update the local state
+  Future<void> _loadSettingsFromFirebase() async {
+    try {
+      final snapshot = await databaseRef.child("climateReact").get();
+
+      if (snapshot.exists) {
+        final data = snapshot.value as Map<dynamic, dynamic>?;
+
+        if (data != null) {
+          final aboveData = data["above"] as Map<dynamic, dynamic>?;
+          final belowData = data["below"] as Map<dynamic, dynamic>?;
+
+          if (aboveData != null) {
+            setState(() {
+              changeACStateAbove = aboveData["aboveActive"] ?? false;
+              tempAbove = (aboveData["aboveTemp"] ?? 0).toDouble();
+              fanLevelAbove = aboveData["setFan"] ?? "Low";
+              modeAbove = aboveData["setMode"] ?? "Cool";
+              swingAbove = aboveData["swing"] ?? "Stopped";
+              temperatureAbove = aboveData["setTemp"] ?? 24;
+            });
+          }
+          if (belowData != null) {
+            setState(() {
+              changeACStateBelow = belowData["belowActive"] ?? false;
+              tempBelow = (belowData["belowTemp"] ?? 0).toDouble();
+              fanLevelBelow = belowData["setFan"] ?? "Low";
+              modeBelow = belowData["setMode"] ?? "Heat";
+              swingBelow = belowData["swing"] ?? "Stopped";
+              temperatureBelow = belowData["setTemp"] ?? 22;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print("Error loading data from Firebase: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,6 +128,11 @@ class _ClimateReactScreenState extends State<ClimateReactScreen> {
                 isACStateEnabled: changeACStateAbove,
                 onACStateChanged: (value) {
                   setState(() {
+                    // If the user is checking "above" on (value == true),
+                    // uncheck the "below" one.
+                    if (value == true) {
+                      changeACStateBelow = false;
+                    }
                     changeACStateAbove = value!;
                   });
                 },
@@ -142,6 +195,11 @@ class _ClimateReactScreenState extends State<ClimateReactScreen> {
                 isACStateEnabled: changeACStateBelow,
                 onACStateChanged: (value) {
                   setState(() {
+                    // If the user is checking "below" on (value == true),
+                    // uncheck the "above" one.
+                    if (value == true) {
+                      changeACStateAbove = false;
+                    }
                     changeACStateBelow = value!;
                   });
                 },
@@ -185,10 +243,36 @@ class _ClimateReactScreenState extends State<ClimateReactScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
-                    // Save the settings logic here
-                    print("Settings saved");
-                  },
+                  onPressed: () async {
+  try {
+    // The parent node can be anything you want, e.g. "climateReact"
+      final DatabaseReference databaseRef = FirebaseDatabase.instance.ref();
+    await databaseRef.child("climateReact").set({
+      "above": {
+        "aboveActive": changeACStateAbove,    // true/false from checkbox
+        "aboveTemp": tempAbove.toInt(),      // your slider value
+        "setFan": fanLevelAbove,             // e.g. "Auto", "High", ...
+        "setMode": modeAbove,                   // "Cool" or "Heat", etc.
+        "swing": swingAbove,
+        "setTemp": temperatureAbove,     // AC set temperature
+      },
+      "below": {
+        "belowActive": changeACStateBelow,
+        "belowTemp": tempBelow.toInt(),
+        "setFan": fanLevelBelow,
+        "setMode": modeBelow,
+        "swing": swingBelow,
+        "setTemp": temperatureBelow,
+      },
+    });
+
+    print("Settings saved to Firebase.");
+    // Optionally show a snackbar or any UI feedback
+  } catch (e) {
+    print("Error saving to Firebase: $e");
+    // Handle error
+  }
+},
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.teal,
                     padding: EdgeInsets.symmetric(vertical: 14),
@@ -277,12 +361,12 @@ class _ClimateReactScreenState extends State<ClimateReactScreen> {
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
-          _buildDropdownRow("AC state", acState, ["On", "Off"], onACStateChanged),
+          _buildDropdownRow("AC state", acState, ["On"], onACStateChanged),
           _buildDropdownRow("Mode", mode, ["Cool", "Heat"], onModeChanged),
           _buildDropdownRow(
-              "Fan level", fanLevel, ["Low", "Medium", "High", "Auto"], onFanLevelChanged),
+              "Fan level", fanLevel, ["Low", "High"], onFanLevelChanged),
           _buildDropdownRow(
-              "Swing", swing, ["Stopped (auto)", "Low", "Medium", "High"], onSwingChanged),
+              "Swing", swing, ["Stopped", "Vertical", "Horizontal"], onSwingChanged),
           _buildDropdownRow(
               "Temperature",
               temperature.toString(),

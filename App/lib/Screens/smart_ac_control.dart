@@ -13,6 +13,8 @@ import '../Screens/timer_screen.dart';
 import '../Screens/climate_react_screen.dart';
 import '../Screens/setting_screen.dart';
 import '../Screens/login_screen.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+
 //import 'package:connectivity_plus/connectivity_plus.dart';
 
 
@@ -24,6 +26,8 @@ class SmartACControl extends StatefulWidget {
 class _SmartACControlState extends State<SmartACControl> {
   final List<TemperatureReading> _temperatureLog = [];
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final FlutterTts flutterTts = FlutterTts();
+
   //StreamSubscription<ConnectivityResult>? _connectivitySubscription;
   //final Connectivity _connectivity = Connectivity();
   //ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _connectionSnackBarController;
@@ -35,7 +39,7 @@ class _SmartACControlState extends State<SmartACControl> {
   double ledBrightness = 50;
   String mode = "Cool";          // Default mode
   String fanSpeed = "Low";       // Default fan speed
-  bool sleepCurve = false;
+  //bool sleepCurve = false;
   bool myFavorite = false; // Whether the favorite settings are enabled
   bool isPowerOn = true;
   bool isConnected = true;
@@ -58,7 +62,10 @@ class _SmartACControlState extends State<SmartACControl> {
   String randomValue = '';
   Timer? _timer;
   Timer? _inactivityTimer;
-  Timer? _scheduleTimer; //schedule 
+  Timer? _scheduleTimer; 
+
+  bool _hasUnsavedChanges = false;
+
 
   //bool showError = false;
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _snackBarController;
@@ -284,14 +291,9 @@ void _showErrorMessage() {
         ),
       ),
       backgroundColor: Colors.red,
-      duration: Duration(seconds: 10), // Retry after 10 seconds
+      duration: Duration(hours: 1), // Indefinite duration
     ),
   );
-
-  // Retry checking connection every 10 seconds
-  Timer(Duration(seconds: 10), () {
-    _startListeningToRandomValue();
-  });
 }
 
   void _hideErrorMessage() {
@@ -361,36 +363,143 @@ void _showErrorMessage() {
   }
 
   // apply the favorite settings
-  void _applyFavoriteSettings() async {
-    try {
-      // Use local favorite settings
-      setState(() {
-        newMode = favoriteSettings['mode'];
-        newFanSpeed = favoriteSettings['fanSpeed'];
-        newTemperature = favoriteSettings['temperature'];
-      });
+  Future<void> _applyFavoriteSettings() async {
+  try {
+    // 1) Read the favorites from Firebase
+    final DatabaseReference favRef = FirebaseDatabase.instance.ref('favorites');
+    final DataSnapshot snapshot = await favRef.get();
 
-      // Apply these changes to Firebase
-      await _applyChanges();
-
+    if (!snapshot.exists) {
+      debugPrint('No favorite settings found in /favorites');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Favorite settings applied successfully!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      debugPrint('Error applying favorite settings: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to apply favorite settings: $e'),
+          content: Text('No favorite settings found.'),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
         ),
       );
+      return;
     }
+
+    // 2) Parse the data
+    final data = snapshot.value as Map<dynamic, dynamic>;
+    final String acState = data['acState']?.toString() ?? 'Off'; // e.g., "On" or "Off"
+    final String setMode = data['mode']?.toString() ?? 'Cool'; 
+    final String setFan = data['fanSpeed']?.toString() ?? 'Low'; 
+    final double setTemp = double.tryParse(data['temperature']?.toString() ?? '24') ?? 24;
+
+    // 3) Toggle AC Power if needed
+    if (acState == "On" && !isPowerOn) {
+      // Turn AC on (IR hex e.g. "F7C03F")
+      await FirebaseDatabase.instance
+          .ref('transmitter/onOff/code')
+          .set("F7C03F");
+      await FirebaseDatabase.instance
+          .ref('transmitter/onOff/value')
+          .set("On");
+
+      setState(() {
+        isPowerOn = true;
+      });
+    } else if (acState == "Off" && isPowerOn) {
+      // Turn AC off (IR hex e.g. "F740BF")
+      await FirebaseDatabase.instance
+          .ref('transmitter/onOff/code')
+          .set("F740BF");
+      await FirebaseDatabase.instance
+          .ref('transmitter/onOff/value')
+          .set("Off");
+
+      setState(() {
+        isPowerOn = false;
+      });
+    }
+
+    // 4) Set the mode
+    // Example: "Cool" => "F7609F", "Heat" => "F720DF"
+    String modeHexValue = (setMode == "Cool") ? "F7609F" : "F720DF";
+    await FirebaseDatabase.instance
+        .ref('transmitter/mode/code')
+        .set(modeHexValue);
+    await FirebaseDatabase.instance
+        .ref('transmitter/mode/value')
+        .set(setMode);
+
+    // 5) Set fan speed
+    // Example: "Low" => "F728D7", "High" => "F76897"
+    String fanHexValue;
+    switch (setFan) {
+      case "High":
+        fanHexValue = "F76897";
+        break;
+      default: // "Low"
+        fanHexValue = "F728D7";
+        break;
+    }
+    await FirebaseDatabase.instance
+        .ref('transmitter/fanSpeed/code')
+        .set(fanHexValue);
+    await FirebaseDatabase.instance
+        .ref('transmitter/fanSpeed/value')
+        .set(setFan);
+
+    // 6) Set temperature
+    // Use your own temperature => hex code map
+    final Map<int, String> temperatureHexMap = {
+      16: "F7A05F",
+      17: "F710EF",
+      18: "F7906F",
+      19: "F750AF",
+      20: "F730CF",
+      21: "F7B04F",
+      22: "F7708F",
+      23: "F708F7",
+      24: "F78877",
+      25: "F748B7",
+      26: "F7A857",
+      27: "F7A05F",
+      28: "F710EF",
+      29: "F7906F",
+      30: "F750AF",
+    };
+    int tempInt = setTemp.toInt();
+    String tempHexValue = temperatureHexMap[tempInt] ?? "F7A05F";
+    await FirebaseDatabase.instance
+        .ref('transmitter/temp/code')
+        .set(tempHexValue);
+    await FirebaseDatabase.instance
+        .ref('transmitter/temp/value')
+        .set(tempInt);
+
+    // 7) Update local UI state
+    newMode = setMode;
+    newFanSpeed = setFan;
+    newTemperature = setTemp;
+    setState(() {
+      mode = newMode;
+      fanSpeed = newFanSpeed;
+      temperature = newTemperature;
+    });
+
+    // 8) Show success
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Favorite settings applied successfully!'),
+        backgroundColor: Colors.green,
+      ),
+    );
+    debugPrint("Applied favorites => acState:$acState mode:$setMode fan:$setFan temp:$setTemp");
+
+  } catch (e) {
+    debugPrint("Error applying favorites: $e");
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error applying favorites: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
+}
+
 
   // Callback when the favorite settings are changed
   void _onFavoriteChanged(Map<String, dynamic> newFavorites) {
@@ -404,6 +513,36 @@ void _showErrorMessage() {
     });
   }
 
+ /// Reads the current AC settings aloud via TTS
+Future<void> _speakACSettings() async {
+  // Construct a phrase that references your actual state variables
+  // (mode, temperature, fanSpeed).
+  String text = "Your AC temperature is set to "
+      "${temperature.toInt()} degrees, "
+      "in $mode mode, "
+      "and the fan speed is $fanSpeed.";
+
+  await flutterTts.setSpeechRate(0.0);
+  await flutterTts.setPitch(0.5);
+  await flutterTts.setLanguage("en-UK");
+  // Use flutterTts to speak
+  await flutterTts.speak(text);
+}
+
+  void _showNoConnectionMessage() {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'No internet connection. Please check your connection.',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 3),
+      ),
+    );
+   }
 
 
   // Callback when the inactivity timeout is changed
@@ -524,6 +663,8 @@ Future<void> _fetchSetTemperatureFromFirebase() async {
   void _changeMode(String newMode) {
     setState(() {
       this.newMode = newMode;
+          _hasUnsavedChanges = true;
+
     });
   }
 
@@ -531,6 +672,8 @@ Future<void> _fetchSetTemperatureFromFirebase() async {
   void _changeFanSpeed(String newFanSpeed) {
     setState(() {
       this.newFanSpeed = newFanSpeed;
+          _hasUnsavedChanges = true;
+
     });
   }
 
@@ -557,6 +700,7 @@ Future<void> _fetchSetTemperatureFromFirebase() async {
   void _changeTemperature(double newTemperature) async {
     setState(() {
       this.newTemperature = newTemperature; // Update local state
+       _hasUnsavedChanges = true;
     });
 
     // Generate the temperature hex code
@@ -603,7 +747,7 @@ void _monitorMotionSensor() {
       int motionValue = int.tryParse(event.snapshot.value.toString()) ?? 1;
 
       if (motionValue == 0) {
-        // No motion detected, start inactivity timer
+        // No motion detected => start inactivity timer
         if (_inactivityTimer == null || !_inactivityTimer!.isActive) {
           int timeoutSeconds = await _getInactivityTimeout();
           print("No motion detected. Waiting for $timeoutSeconds seconds before turning off AC.");
@@ -615,10 +759,158 @@ void _monitorMotionSensor() {
       } else {
         // Motion detected, reset timer
         _resetInactivityTimer();
+
+        // Check if AC is currently off
+        if (!isPowerOn) {
+          // See if "climateReact" settings say we should turn it on
+          final DatabaseReference climateRef = FirebaseDatabase.instance.ref('climateReact');
+          final DataSnapshot climateSnap = await climateRef.get();
+
+          if (climateSnap.exists) {
+            final climateData = climateSnap.value as Map<dynamic, dynamic>?;
+
+            if (climateData != null) {
+              final aboveData = climateData["above"] as Map<dynamic, dynamic>?;
+              final belowData = climateData["below"] as Map<dynamic, dynamic>?;
+
+              final bool aboveActive = aboveData?["aboveActive"] ?? false;
+              final bool belowActive = belowData?["belowActive"] ?? false;
+
+              if (aboveActive || belowActive) {
+                // For this example, pick whichever is active.
+                // (If you only allow one at a time, no conflict.)
+                if (aboveActive && indoorTemperature> aboveData!["aboveTemp"]) {
+                  print("Motion detected, AC is off, 'above' is active => turning on AC with 'above' settings");
+                  await _turnOnAC(); 
+                  await _applyClimateReactSettings(aboveData);
+                } else if (belowActive&& indoorTemperature < belowData!["belowTemp"]) {
+                  print("Motion detected, AC is off, 'below' is active => turning on AC with 'below' settings");
+                  await _turnOnAC();
+                  await _applyClimateReactSettings(belowData);
+                }
+              }
+            }
+          }
+        }
       }
     }
   });
 }
+
+
+/// Force the AC to turn ON via IR command
+Future<void> _turnOnAC() async {
+  try {
+    // IR hex for "On" (example: "F7C03F")
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/onOff/code')
+        .set("F7C03F");
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/onOff/value')
+        .set("On");
+
+    setState(() {
+      isPowerOn = true; // local state
+    });
+
+    print("AC turned ON via transmitter.");
+  } catch (e) {
+    print("Failed to turn AC on: $e");
+  }
+}
+
+
+Future<void> _applyClimateReactSettings(Map<dynamic, dynamic> data) async {
+  // Safe parsing
+  final String setFan = data["setFan"] ?? "Auto";
+  final String setMode = data["setMode"] ?? "Cool";
+  final String swing = data["swing"] ?? "Stopped (auto)";
+  final int setTemp = data["setTemp"] ?? 24;
+
+  // 1) Set mode
+  // Your existing code: if "Cool", IR hex is "F7609F", if "Heat", "F720DF", etc.
+  String modeHexValue = (setMode == "Cool") ? "F7609F" : "F720DF";
+  await FirebaseDatabase.instance
+      .ref()
+      .child('transmitter/mode/code')
+      .set(modeHexValue);
+  await FirebaseDatabase.instance
+      .ref()
+      .child('transmitter/mode/value')
+      .set(setMode);
+
+  // 2) Set fan speed
+  // Suppose "Low" => "F728D7", "High" => "F76897", "Auto" => ...
+  String fanHexValue;
+  switch (setFan) {
+    case "Low":
+      fanHexValue = "F728D7";
+      break;
+    case "High":
+      fanHexValue = "F76897";
+      break;
+    default:
+      fanHexValue = "F7E817"; // example for "Auto"
+      break;
+  }
+  await FirebaseDatabase.instance
+      .ref()
+      .child('transmitter/fanSpeed/code')
+      .set(fanHexValue);
+  await FirebaseDatabase.instance
+      .ref()
+      .child('transmitter/fanSpeed/value')
+      .set(setFan);
+
+  // 3) Set temperature
+  // Use your existing map for temperature => hex code
+  final Map<int, String> temperatureHexMap = {
+    16: "F7A05F",
+    17: "F710EF",
+    18: "F7906F",
+    19: "F750AF",
+    20: "F730CF",
+    21: "F7B04F",
+    22: "F7708F",
+    23: "F708F7",
+    24: "F78877",
+    25: "F748B7",
+    26: "F7A857",
+    27: "F7A05F",
+    28: "F710EF",
+    29: "F7906F",
+    30: "F750AF",
+  };
+
+  String tempHexValue = temperatureHexMap[setTemp] ?? "F7A05F"; 
+  await FirebaseDatabase.instance
+      .ref()
+      .child('transmitter/temp/code')
+      .set(tempHexValue);
+  await FirebaseDatabase.instance
+      .ref()
+      .child('transmitter/temp/value')
+      .set(setTemp);
+
+  // 4) Optionally handle swing if you have IR codes for it
+  // e.g., "Stopped (auto)" => some hex, "High" => another hex, etc.
+
+  newMode = setMode;
+  newFanSpeed = setFan;
+  newTemperature = setTemp.toDouble();
+  // 5) Update local state if needed
+  setState(() {
+    mode = newMode;
+    fanSpeed = newFanSpeed;
+    temperature = newTemperature;
+    // handle any additional fields for swing, etc.
+  });
+
+  print("Applied climateReact settings => Mode: $setMode, Fan: $setFan, Temp: $setTemp");
+}
+
 
 /// Fetch inactivityTimeout from Firebase (in seconds)
 Future<int> _getInactivityTimeout() async {
@@ -708,8 +1000,11 @@ void _resetInactivityTimer() {
         mode = newMode;
         fanSpeed = newFanSpeed;
         temperature = newTemperature;
+        _hasUnsavedChanges = false; // Return button to white
       });
-
+if (soundActive) {
+      await _speakACSettings();
+}
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Changes applied successfully!'),
@@ -732,12 +1027,19 @@ void _resetInactivityTimer() {
   }
 }
 
+  // ------------------------------------------------------------------------------------
+  // UI
+  // ------------------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
+    final Color buttonColor = _hasUnsavedChanges ? Colors.blue : Colors.white;
+    final Color textColor = _hasUnsavedChanges ? Colors.white : Colors.black;
+
+    
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
-        title: const Text("Bedroom AC"),
+        title: const Text("Smart AC"),
         centerTitle: true,
         backgroundColor: Colors.blueAccent,
         actions: [
@@ -864,38 +1166,32 @@ void _resetInactivityTimer() {
           ],
         ),
       ),
-      
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Column(
-                  children: [
-                    if (!isConnected)
-                    Container(
-                      width: double.infinity,
-                      color: Colors.red,
-                      padding: const EdgeInsets.all(8.0),
-                      child: const Text(
-                        'No Internet Connection',
-                        style: TextStyle(color: Colors.white),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    Container(
-                      width: constraints.maxWidth,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: newMode == "Cool"
-                              ? [Colors.blue[200]!, Colors.blue[50]!]
-                              : [Colors.red[200]!, Colors.red[50]!],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                      ),
-                      child: Padding(
+      // <--- Entire body in a gradient-filled Container
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          // The gradient changes based on the mode
+          gradient: LinearGradient(
+            colors: newMode == "Cool"
+                ? [Colors.blue[200]!, Colors.blue[50]!]
+                : [Colors.red[200]!, Colors.red[50]!],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    children: [
+                      // Instead of a nested Container with gradient,
+                      // we can just use the parent gradient.
+
+                      Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Column(
                           children: [
@@ -906,13 +1202,13 @@ void _resetInactivityTimer() {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      "Outdoor Temperature: ${outdoorTemperature.toInt()}ֲ°C",
+                                      "Outdoor Temperature: ${outdoorTemperature.toInt()}°C",
                                       style: const TextStyle(
                                           fontSize: 16, color: Colors.black54),
                                     ),
                                     const SizedBox(height: 10),
                                     Text(
-                                      "Indoor Temperature: ${indoorTemperature.toInt()}ֲ°C",
+                                      "Indoor Temperature: ${indoorTemperature.toInt()}°C",
                                       style: const TextStyle(
                                           fontSize: 16, color: Colors.black54),
                                     ),
@@ -991,25 +1287,28 @@ void _resetInactivityTimer() {
                                 ),
                               ],
                             ),
-                        SizedBox(height: constraints.maxHeight * 0.02),
-
+                            SizedBox(height: constraints.maxHeight * 0.02),
                             SizedBox(
-  width: double.infinity, // Full width
-  height: 60, // Increase height for a longer button
-  child: ElevatedButton(
-    onPressed: _applyChanges,
-    style: ElevatedButton.styleFrom(
-      backgroundColor: const Color.fromARGB(255, 86, 143, 240), // Bolder color
-      foregroundColor: Colors.white, // White text for contrast
-      textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), // Bigger, bold text
-      padding: const EdgeInsets.symmetric(vertical: 16), // Extra padding for better touch area
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8), // Slightly rounded corners
-      ),
-    ),
-    child: const Text('Press to Set AC Settings'), // Button text
-  ),
-),
+                              width: double.infinity,
+                              height: 60,
+                              child: ElevatedButton(
+                                onPressed: _applyChanges,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: buttonColor,
+                                  foregroundColor: textColor,
+                                  textStyle: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text('Press to Set AC Settings'),
+                              ),
+                            ),
                             SizedBox(height: constraints.maxHeight * 0.06),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -1032,6 +1331,9 @@ void _resetInactivityTimer() {
                                     setState(() {
                                       soundActive = !soundActive;
                                     });
+                                    if (soundActive) {
+                                      _speakACSettings();
+                                    }
                                   },
                                 ),
                                 IconButtonFeature(
@@ -1060,23 +1362,25 @@ void _resetInactivityTimer() {
                             SizedBox(height: constraints.maxHeight * 0.02),
                             Divider(height: 1, color: Colors.grey[300]),
                             Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16.0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                              ),
                               child: Column(
                                 children: [
-                                  ToggleRow(
-                                    label: "Sleep Curve",
-                                    description:
-                                        "Customizes temperature and sleep times",
-                                    icon: Icons.nights_stay,
-                                    value: sleepCurve,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        sleepCurve = value;
-                                      });
-                                    },
-                                  ),
-                                  Divider(height: 1, color: Colors.grey[300]),
+                                  // Removed Sleep Curve
+                                  // ToggleRow(
+                                  //   label: "Sleep Curve",
+                                  //   description: "Customizes temperature and sleep times",
+                                  //   icon: Icons.nights_stay,
+                                  //   value: sleepCurve,
+                                  //   onChanged: (value) {
+                                  //     setState(() {
+                                  //       sleepCurve = value;
+                                  //     });
+                                  //   },
+                                  // ),
+                                  // Divider(height: 1, color: Colors.grey[300]),
+
                                   ToggleRow(
                                     label: "My Favorite",
                                     description:
@@ -1099,13 +1403,13 @@ void _resetInactivityTimer() {
                           ],
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
