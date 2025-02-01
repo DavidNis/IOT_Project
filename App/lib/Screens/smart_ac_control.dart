@@ -58,6 +58,7 @@ class _SmartACControlState extends State<SmartACControl> {
   String randomValue = '';
   Timer? _timer;
   Timer? _inactivityTimer;
+  Timer? _scheduleTimer; //schedule 
 
   //bool showError = false;
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _snackBarController;
@@ -93,7 +94,104 @@ class _SmartACControlState extends State<SmartACControl> {
     _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _fetchSetTemperatureFromFirebase();
     });
+
+     // Start checking the schedule every minute
+    _scheduleTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      _checkSchedule();
+    });//schedule
   }
+
+
+Future<void> _checkSchedule() async {
+  try {
+    final DatabaseReference scheduleRef = FirebaseDatabase.instance.ref().child('Schedule');
+    final snapshot = await scheduleRef.get();
+
+    if (snapshot.exists) {
+      final data = snapshot.value as Map<dynamic, dynamic>;
+      final now = DateTime.now();
+      final currentTime = TimeOfDay(hour: now.hour, minute: now.minute);
+      final currentDay = now.weekday;
+
+      // Extract stored time
+      final List<String> timeParts = (data['runAt'] ?? "").split(":");
+      if (timeParts.length != 2) {
+        debugPrint('Invalid scheduled time format');
+        return;
+      }
+
+      final int scheduledHour = int.tryParse(timeParts[0]) ?? -1;
+      final int scheduledMinute = int.tryParse(timeParts[1]) ?? -1;
+
+      if (scheduledHour == -1 || scheduledMinute == -1) {
+        debugPrint('Invalid scheduled hour or minute');
+        return;
+      }
+
+      // Ensure 'repeatDays' is a valid string
+      final String repeatDays = (data['repeatDays'] ?? "0000000");
+      if (repeatDays.length != 7) {
+        debugPrint('Invalid repeatDays format');
+        return;
+      }
+
+      // Debugging statements to verify values
+      debugPrint('Current day: $currentDay');
+      debugPrint('Repeat days: $repeatDays');
+      debugPrint('Scheduled hour: $scheduledHour');
+      debugPrint('Scheduled minute: $scheduledMinute');
+      debugPrint('Current hour: ${currentTime.hour}');
+      debugPrint('Current minute: ${currentTime.minute}');
+
+      // Check if todayג€™s schedule should run
+      if (data['isScheduleOn'] == true &&
+          scheduledHour == currentTime.hour &&
+          scheduledMinute == currentTime.minute &&
+          repeatDays[currentDay%7] == '1') {
+        
+        debugPrint('Schedule matched: Applying settings');
+        debugPrint('Mode: ${data['mode']}, Fan Speed: ${data['fanSpeed']}, Temperature: ${data['temperature']}');
+
+        // Apply the scheduled settings
+        if (mounted) {
+          setState(() {
+            isPowerOn = data['acState'] == 'On';
+            newMode = data['mode'];
+            newFanSpeed = data['fanSpeed'];
+            newTemperature = (data['temperature'] as num).toDouble();
+          });
+
+          // Apply changes to Firebase
+          String hexCode = isPowerOn ? "F7C03F" : "F740BF";
+          String hexValue = isPowerOn ? "On" : "Off";
+
+          try {
+            await FirebaseDatabase.instance
+                .ref()
+                .child('transmitter/onOff/code')
+                .set(hexCode);
+            await FirebaseDatabase.instance
+                .ref()
+                .child('transmitter/onOff/value')
+                .set(hexValue);
+
+            print("Power command enqueued and value set: $hexCode");
+          } catch (e) {
+            print("Failed to enqueue power command or set value: $e");
+          }
+
+          await _applyChanges();
+        }
+      } else {
+        debugPrint('Schedule did not match: ${data['runAt']}');
+      }
+    } else {
+      debugPrint('No schedule found');
+    }
+  } catch (e) {
+    debugPrint('Error checking schedule: $e');
+  }
+}
 
   void _loadHistoricalTemperatureData() async {
   try {
@@ -186,9 +284,14 @@ void _showErrorMessage() {
         ),
       ),
       backgroundColor: Colors.red,
-      duration: Duration(hours: 1), // Indefinite duration
+      duration: Duration(seconds: 10), // Retry after 10 seconds
     ),
   );
+
+  // Retry checking connection every 10 seconds
+  Timer(Duration(seconds: 10), () {
+    _startListeningToRandomValue();
+  });
 }
 
   void _hideErrorMessage() {
@@ -201,7 +304,8 @@ void _showErrorMessage() {
     // Cancel the timer when this widget is disposed
     _pollingTimer?.cancel();
     _timer?.cancel();
-
+   _scheduleTimer?.cancel();
+    _inactivityTimer?.cancel();
     //_connectivitySubscription?.cancel();
     super.dispose();
   }
@@ -563,53 +667,70 @@ void _resetInactivityTimer() {
   }
 
   /// Apply the current newMode, newFanSpeed, and newTemperature to Firebase
-  Future<void> _applyChanges() async {
-    try {
-      // Update mode
-      String modeHexValue = newMode == "Cool" ? "F7609F" : "F720DF";
-      await FirebaseDatabase.instance
-          .ref()
-          .child('transmitter/mode/code')
-          .set(modeHexValue);
-      await FirebaseDatabase.instance
-          .ref()
-          .child('transmitter/mode/value')
-          .set(newMode);
+ Future<void> _applyChanges() async {
+  try {
+    // Update mode
+    String modeHexValue = newMode == "Cool" ? "F7609F" : "F720DF";
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/mode/code')
+        .set(modeHexValue);
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/mode/value')
+        .set(newMode);
 
-      // Update fan speed
-      String fanSpeedHexValue = newFanSpeed == "Low" ? "F728D7" : "F76897";
-      await FirebaseDatabase.instance
-          .ref()
-          .child('transmitter/fanSpeed/code')
-          .set(fanSpeedHexValue);
-      await FirebaseDatabase.instance
-          .ref()
-          .child('transmitter/fanSpeed/value')
-          .set(newFanSpeed);
+    // Update fan speed
+    String fanSpeedHexValue = newFanSpeed == "Low" ? "F728D7" : "F76897";
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/fanSpeed/code')
+        .set(fanSpeedHexValue);
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/fanSpeed/value')
+        .set(newFanSpeed);
 
-      // Update temperature
-          String temperatureHexValue =temperatureHexMap[newTemperature.toInt()] ?? "F7A05F";  
-      await FirebaseDatabase.instance
-          .ref()
-          .child('transmitter/temp/code')
-          .set(temperatureHexValue);
-      await FirebaseDatabase.instance
-                .ref()
-                .child('transmitter/temp/value')
-                .set(newTemperature);
-      // Apply changes to the main variables
+    // Update temperature
+    String temperatureHexValue = temperatureHexMap[newTemperature.toInt()] ?? "F7A05F";
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/temp/code')
+        .set(temperatureHexValue);
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/temp/value')
+        .set(newTemperature);
+
+    // Apply changes to the main variables
+    if (mounted) {
       setState(() {
         mode = newMode;
         fanSpeed = newFanSpeed;
         temperature = newTemperature;
       });
 
-      //print(
-          //"Changes applied: Mode: $newMode, Fan Speed: $newFanSpeed, Temperature: $newTemperature");
-    } catch (e) {
-      print("Failed to apply changes: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Changes applied successfully!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      debugPrint('Failed to apply changes: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to apply changes: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -870,7 +991,7 @@ void _resetInactivityTimer() {
                                 ),
                               ],
                             ),
-                                                        SizedBox(height: constraints.maxHeight * 0.02),
+                        SizedBox(height: constraints.maxHeight * 0.02),
 
                             SizedBox(
   width: double.infinity, // Full width
