@@ -16,6 +16,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   String mode = "Heat";
   double temperature = 24;
   String fanSpeed = "Low";
+  bool isScheduleOn = true;
+  bool isPowerOn = true; // Add this line
 
   final DatabaseReference scheduleRef = FirebaseDatabase.instance.ref().child('Schedule');
   StreamSubscription<DatabaseEvent>? _scheduleSubscription;
@@ -62,6 +64,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             mode = data["mode"] ?? mode;
             temperature = (data["temperature"] is num) ? (data["temperature"] as num).toDouble() : temperature;
             fanSpeed = data["fanSpeed"] ?? fanSpeed;
+            changeAcState = data["changeAcState"] ?? changeAcState;
+            isScheduleOn = data["isScheduleOn"] ?? isScheduleOn;
           });
         }
       });
@@ -97,6 +101,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         "mode": mode,
         "temperature": temperature,
         "fanSpeed": fanSpeed,
+        "changeAcState": changeAcState,
+        "isScheduleOn": isScheduleOn,
       });
 
       if (!mounted) return;
@@ -111,31 +117,83 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   // Send schedule to ESP32
   Future<void> sendScheduleToESP32() async {
     final String esp32Url = "http://192.168.1.100/set_schedule"; // Replace with ESP32 IP
+    const int maxRetries = 3;
+    int retryCount = 0;
 
-    try {
-      final response = await http.post(
-        Uri.parse(esp32Url),
-        body: {
-          "time": selectedTime.format(context),
-          "days": repeatDays.map((e) => e ? "1" : "0").join(""),
-          "ac_state": acState,
-          "mode": mode,
-          "temperature": temperature.toString(),
-          "fan_speed": fanSpeed,
-        },
-      );
+    while (retryCount < maxRetries) {
+      try {
+        final response = await http.post(
+          Uri.parse(esp32Url),
+          body: {
+            "time": selectedTime.format(context),
+            "days": repeatDays.map((e) => e ? "1" : "0").join(""),
+            "ac_state": acState,
+            "mode": mode,
+            "temperature": temperature.toString(),
+            "fan_speed": fanSpeed,
+          },
+        );
 
-      if (response.statusCode == 200) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Schedule sent successfully to ESP32!")));
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to send schedule! Error: ${response.statusCode}")));
+        if (response.statusCode == 200) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Schedule sent successfully to ESP32!")));
+          return; // Exit the function if the request is successful
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to send schedule! Error: ${response.statusCode}")));
+        }
+      } catch (e) {
+        print("Error sending schedule to ESP32: $e");
+        if (retryCount == maxRetries - 1) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to send schedule after $maxRetries attempts! Error: $e")));
+        }
       }
+
+      retryCount++;
+      await Future.delayed(Duration(seconds: 2)); // Wait for 2 seconds before retrying
+    }
+  }
+
+  // Turn off AC via IR command
+  Future<void> _turnOffAC() async {
+    try {
+      await FirebaseDatabase.instance
+          .ref()
+          .child('transmitter/onOff/code')
+          .set('F740BF');
+      await FirebaseDatabase.instance
+          .ref()
+          .child('transmitter/onOff/value')
+          .set('Off');
+
+      setState(() {
+        isPowerOn = false;
+      });
+      print("AC turned off and command sent to transmitter.");
     } catch (e) {
-      print("Error sending schedule to ESP32: $e");
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to send schedule! Error: $e")));
+      print("Failed to turn off AC: $e");
+    }
+  }
+
+  // Turn on AC via IR command
+  Future<void> _turnOnAC() async {
+    try {
+      await FirebaseDatabase.instance
+          .ref()
+          .child('transmitter/onOff/code')
+          .set('F740BF'); // Replace with the actual code to turn on the AC
+      await FirebaseDatabase.instance
+          .ref()
+          .child('transmitter/onOff/value')
+          .set('On');
+
+      setState(() {
+        isPowerOn = true;
+      });
+      print("AC turned on and command sent to transmitter.");
+    } catch (e) {
+      print("Failed to turn on AC: $e");
     }
   }
 
@@ -158,120 +216,139 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Time Picker
+            // Schedule On/Off Switch
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Run at", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                GestureDetector(
-                  onTap: () => _selectTime(context),
-                  child: Text("${selectedTime.format(context)}", style: TextStyle(fontSize: 16, color: Colors.teal)),
-                ),
-              ],
-            ),
-            SizedBox(height: 20),
-
-            // Repeat Days
-            Text("Repeat on", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(7, (index) {
-                String day = "SMTWTFS"[index];
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      repeatDays[index] = !repeatDays[index];
-                    });
-                  },
-                  child: Container(
-                    padding: EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: repeatDays[index] ? Colors.teal : Colors.grey[300],
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      day,
-                      style: TextStyle(color: repeatDays[index] ? Colors.white : Colors.black, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                );
-              }),
-            ),
-            SizedBox(height: 20),
-
-            // AC State Switch
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Change AC state", style: TextStyle(fontSize: 16)),
+                Text("Schedule On/Off", style: TextStyle(fontSize: 16)),
                 Switch(
-                  value: changeAcState,
+                  value: isScheduleOn,
                   onChanged: (value) {
                     setState(() {
-                      changeAcState = value;
+                      isScheduleOn = value;
                     });
                   },
                 ),
               ],
             ),
-            Divider(),
+            SizedBox(height: 20),
 
-            // AC Settings
-            if (changeAcState)
-              Column(
+            if (isScheduleOn) ...[
+              // Time Picker
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  ListTile(
-                    title: Text("AC State"),
-                    trailing: DropdownButton<String>(
-                      value: acState,
-                      onChanged: (value) => setState(() => acState = value!),
-                      items: ["On", "Off"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    ),
-                  ),
-                  ListTile(
-                    title: Text("Mode"),
-                    trailing: DropdownButton<String>(
-                      value: mode,
-                      onChanged: (value) => setState(() => mode = value!),
-                      items: ["Heat", "Cool"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    ),
-                  ),
-                  ListTile(
-                    title: Text("Fan Speed"),
-                    trailing: DropdownButton<String>(
-                      value: fanSpeed,
-                      onChanged: (value) => setState(() => fanSpeed = value!),
-                      items: ["Low", "High"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    ),
-                  ),
-                  ListTile(
-                    title: Text("Temperature"),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.remove),
-                          onPressed: () {
-                            setState(() {
-                              temperature = (temperature - 1).clamp(16, 30);
-                            });
-                          },
-                        ),
-                        Text("${temperature.toStringAsFixed(1)}°C"),
-                        IconButton(
-                          icon: Icon(Icons.add),
-                          onPressed: () {
-                            setState(() {
-                              temperature = (temperature + 1).clamp(16, 30);
-                            });
-                          },
-                        ),
-                      ],
-                    ),
+                  Text("Run at", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  GestureDetector(
+                    onTap: () => _selectTime(context),
+                    child: Text("${selectedTime.format(context)}", style: TextStyle(fontSize: 16, color: Colors.teal)),
                   ),
                 ],
               ),
+              SizedBox(height: 20),
+
+              // Repeat Days
+              Text("Repeat on", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List.generate(7, (index) {
+                  String day = "SMTWTFS"[index];
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        repeatDays[index] = !repeatDays[index];
+                      });
+                    },
+                    child: Container(
+                      padding: EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: repeatDays[index] ? Colors.teal : Colors.grey[300],
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        day,
+                        style: TextStyle(color: repeatDays[index] ? Colors.white : Colors.black, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              SizedBox(height: 20),
+
+              // AC State Switch
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("Change AC state", style: TextStyle(fontSize: 16)),
+                  Switch(
+                    value: changeAcState,
+                    onChanged: (value) {
+                      setState(() {
+                        changeAcState = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              Divider(),
+
+              // AC Settings
+              if (changeAcState)
+                Column(
+                  children: [
+                    ListTile(
+                      title: Text("AC State"),
+                      trailing: DropdownButton<String>(
+                        value: acState,
+                        onChanged: (value) => setState(() => acState = value!),
+                        items: ["On", "Off"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      ),
+                    ),
+                    ListTile(
+                      title: Text("Mode"),
+                      trailing: DropdownButton<String>(
+                        value: mode,
+                        onChanged: (value) => setState(() => mode = value!),
+                        items: ["Heat", "Cool"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      ),
+                    ),
+                    ListTile(
+                      title: Text("Fan Speed"),
+                      trailing: DropdownButton<String>(
+                        value: fanSpeed,
+                        onChanged: (value) => setState(() => fanSpeed = value!),
+                        items: ["Low", "High"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      ),
+                    ),
+                    ListTile(
+                      title: Text("Temperature"),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.remove),
+                            onPressed: () {
+                              setState(() {
+                                temperature = (temperature - 1).clamp(16, 30);
+                              });
+                            },
+                          ),
+                          Text("${temperature.toStringAsFixed(1)}°C"),
+                          IconButton(
+                            icon: Icon(Icons.add),
+                            onPressed: () {
+                              setState(() {
+                                temperature = (temperature + 1).clamp(16, 30);
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+            ],
 
             Spacer(),
 
@@ -281,7 +358,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               child: ElevatedButton(
                 onPressed: () async {
                   await saveScheduleToFirebase();
-                  await sendScheduleToESP32();
+                  if (isScheduleOn) {
+                    await sendScheduleToESP32();
+                    if (acState == "On") {
+                      await _turnOnAC();
+                    } else {
+                      await _turnOffAC();
+                    }
+                  }
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, padding: EdgeInsets.symmetric(vertical: 14)),
                 child: Text("Save", style: TextStyle(fontSize: 16, color: Colors.white)),
@@ -289,7 +373,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             ),
           ],
         ),
-),
-);
-}
+      ),
+    );
+  }
 }
