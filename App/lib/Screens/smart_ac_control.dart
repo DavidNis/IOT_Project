@@ -41,7 +41,7 @@ class _SmartACControlState extends State<SmartACControl> {
   String fanSpeed = "Low";       // Default fan speed
   //bool sleepCurve = false;
   bool myFavorite = false; // Whether the favorite settings are enabled
-  bool isPowerOn = true;
+  bool isPowerOn = false;  // Whether the AC is on
   bool isConnected = true;
 
   bool verticalSwingActive = false;
@@ -200,7 +200,7 @@ Future<void> _checkSchedule() async {
   }
 }
 
-  void _loadHistoricalTemperatureData() async {
+void _loadHistoricalTemperatureData() async {
   try {
     final DatabaseReference logRef = FirebaseDatabase.instance.ref('temperatureLog');
     final DataSnapshot snapshot = await logRef.get();
@@ -221,6 +221,8 @@ Future<void> _checkSchedule() async {
     debugPrint('Error loading historical data: $e');
   }
 }
+
+
 
   // Future<void> _checkConnection() async {
   //   final connectivityResult = await _connectivity.checkConnectivity();
@@ -529,20 +531,20 @@ Future<void> _speakACSettings() async {
   await flutterTts.speak(text);
 }
 
-  void _showNoConnectionMessage() {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text(
-          'No internet connection. Please check your connection.',
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.red,
-        duration: Duration(seconds: 3),
+void _showNoConnectionMessage() {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.clearSnackBars();
+  messenger.showSnackBar(
+    const SnackBar(
+      content: Text(
+        'No internet connection. Please check your connection.',
+        style: TextStyle(color: Colors.white),
       ),
-    );
-   }
+      backgroundColor: Colors.red,
+      duration: Duration(seconds: 3),
+    ),
+  );
+}
 
 
   // Callback when the inactivity timeout is changed
@@ -551,6 +553,23 @@ Future<void> _speakACSettings() async {
       inactivityTimeout = newTimeout; // Update the timeout value
     });
   }
+
+  void _clearTemperatureLogs() async {
+  try {
+    // Clear the logs in Firebase
+    final DatabaseReference logRef = FirebaseDatabase.instance.ref('temperatureLog');
+    await logRef.remove();
+
+    // Clear the logs locally
+    setState(() {
+      _temperatureLog.clear();
+    });
+
+    debugPrint('Logs cleared successfully.');
+  } catch (e) {
+    debugPrint('Error clearing logs: $e');
+  }
+}
 
 
 
@@ -601,6 +620,9 @@ Future<void> _speakACSettings() async {
   // and add it to `temperatureLog` every 5 seconds.
 // In _SmartACControlState of smart_ac_control.dart
 Future<void> _fetchSetTemperatureFromFirebase() async {
+  // Skip logging if AC is off
+  if (!isPowerOn) return;
+
   try {
     final ref = FirebaseDatabase.instance.ref('transmitter/temp/value');
     final snapshot = await ref.get();
@@ -618,10 +640,12 @@ Future<void> _fetchSetTemperatureFromFirebase() async {
         });
 
         setState(() {
+          // Add to the local temperature log
           _temperatureLog.add(
             TemperatureReading(timestamp: DateTime.now(), value: parsed),
           );
 
+          // Keep the log size manageable (e.g., max 60 entries)
           if (_temperatureLog.length > 60) {
             _temperatureLog.removeAt(0);
           }
@@ -632,6 +656,7 @@ Future<void> _fetchSetTemperatureFromFirebase() async {
     debugPrint('Error fetching temperature: $e');
   }
 }
+
 
   // Toggle the AC power on/off (IR code) via Firebase
   void _togglePower() async {
@@ -938,28 +963,32 @@ void _resetInactivityTimer() {
 
 
   /// Turn off AC via IR command
-  Future<void> _turnOffAC() async {
-    try {
-      await FirebaseDatabase.instance
-          .ref()
-          .child('transmitter/onOff/code')
-          .set('F740BF');
-      await FirebaseDatabase.instance
-          .ref()
-          .child('transmitter/onOff/value')
-          .set('Off');
+Future<void> _turnOffAC() async {
+  try {
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/onOff/code')
+        .set('F740BF');
+    await FirebaseDatabase.instance
+        .ref()
+        .child('transmitter/onOff/value')
+        .set('Off');
 
-      setState(() {
-        isPowerOn = false;
-      });
-      print("AC turned off and command sent to transmitter.");
-    } catch (e) {
-      print("Failed to turn off AC: $e");
-    }
+    setState(() {
+      isPowerOn = false;
+    });
+    print("AC turned off and command sent to transmitter.");
+  } catch (e) {
+    print("Failed to turn off AC: $e");
   }
+}
 
   /// Apply the current newMode, newFanSpeed, and newTemperature to Firebase
- Future<void> _applyChanges() async {
+Future<void> _applyChanges() async {
+  if (!isPowerOn) {
+  // Do nothing if the AC is off
+  return;
+  }
   try {
     // Update mode
     String modeHexValue = newMode == "Cool" ? "F7609F" : "F720DF";
@@ -1141,7 +1170,9 @@ if (soundActive) {
                   context,
                   MaterialPageRoute(
                     builder: (context) => GraphsAndLogsScreen(
+                      isACOn: isPowerOn,
                       temperatureLog: _temperatureLog,
+                      onClearLogs: _clearTemperatureLogs,
                     ),
                   ),
                 );
