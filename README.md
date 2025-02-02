@@ -24,7 +24,7 @@ Smart AC Hardware:
 - IR Transmitter and Receiver: Controls the AC via infrared signals and can replicate remote commands.
 - ESP32 - Controls all sensors, manages Wi-Fi, and processes IR signals.
 
-Features & Functionalities in the menu option:
+Features & Functionalities:
 - Manual AC Control:
   Turn the AC ON/OFF, adjust the temperature, switch modes, and control fan speed through the mobile app.
   Uses IR communication via ESP32 to replicate the original AC remote control signals.
@@ -54,30 +54,38 @@ Features & Functionalities in the menu option:
   The app tracks AC usage data over time. It displays a graph based on the temperature that is being used and shows the logs. It helps users optimize energy savings by identifying patterns. the app calculates the average temperature that is being used and recommends     it to the user.
 
 - Cloud & Remote Access
-  Full AC control from anywhere in the world via Wi-Fi & cloud services.
+  Full AC control from anywhere in the world via Wi-Fi & firebase.
+
+- Sign-Up Option
+  For new users, the Sign-Up feature enables account creation. Users provide their email and set a password to register. Upon successful registration, their data is securely stored in Firebase Authentication, allowing     to log in anytime from any device.
+
+
+- Logging in/Logging out screen:
+  The login screen provides a secure gateway for users to access their personalized Smart AC Control system. It requires users to input their email and password for authentication. After successfully logging in, users     gain access to their customized settings, including favorite preferences, schedules, and usage data.
+
 
 For Heat and Cool modes, users can select the desired AC mode using the Mode button. When Cool mode is activated, the screen displays a blue color, while in Heat mode, the main screen shifts to a red color, providing a clear visual distinction between the two modes.
 Every color represents a temperature range and AC mode (cool/heat) as follows:
 
 • Heat:
 
-o 16°C - 20°C: yellow
+ 16°C - 20°C: yellow
 
-o 21°C - 25°C: Orange
+ 21°C - 25°C: Orange
 
-o 24°C - 28°C: Darker Orange
+ 24°C - 28°C: Darker Orange
 
-o 27°C - 30°C: Red
+ 27°C - 30°C: Red
 
 • Cool:
 
-o 16°C - 20°C: Blue
+ 16°C - 20°C: Blue
 
-o 21°C - 25°C: Lighter blue
+ 21°C - 25°C: Lighter blue
 
-o 24°C - 28°C: Lighter blue
+ 24°C - 28°C: Lighter blue
 
-o 27°C - 30°C: White    ??? maybe these temperatures
+ 27°C - 30°C: White    ??? maybe these temperatures
 
 *Minimum AC temperature: 16°C
 
@@ -92,6 +100,7 @@ This is what the app looks like:
 
 
 
+![image_resized_sign_in_smaller](https://github.com/user-attachments/assets/06cc6f16-9834-4005-bb04-2b10aa31b411)
 ![image_resized_smaller](https://github.com/user-attachments/assets/cb38e2cb-2f2e-4ef5-902d-582c3a782a37)&nbsp; ![image_resized_new_smaller](https://github.com/user-attachments/assets/2c4c3d12-4373-4de7-a004-851d8759f00e)&nbsp;
  ![image_resized_third_smaller](https://github.com/user-attachments/assets/4172dac3-2179-4cdb-b662-549812fbdec9)
 
