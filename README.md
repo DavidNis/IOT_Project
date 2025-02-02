@@ -92,7 +92,7 @@ This is what the app looks like:
 
 
 
-![image_resized_smaller](https://github.com/user-attachments/assets/cb38e2cb-2f2e-4ef5-902d-582c3a782a37)![image_resized_new_smaller](https://github.com/user-attachments/assets/2c4c3d12-4373-4de7-a004-851d8759f00e)
+![image_resized_smaller](https://github.com/user-attachments/assets/cb38e2cb-2f2e-4ef5-902d-582c3a782a37)              ![image_resized_new_smaller](https://github.com/user-attachments/assets/2c4c3d12-4373-4de7-a004-851d8759f00e)
  ![image_resized_third_smaller](https://github.com/user-attachments/assets/4172dac3-2179-4cdb-b662-549812fbdec9)
 
 
