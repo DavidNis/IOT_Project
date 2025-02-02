@@ -14,7 +14,7 @@ With a custom-built Flutter application, users can:
 - Monitor room temperature and humidity
 - Automate operations based on motion detection and schedules
 - Connect via Wi-Fi for seamless cloud integration
-- Use voice commands with Google Assistant and Alexa
+- Use Text to speach
 
 This solution improves both convenience and energy efficiency, reducing unnecessary power consumption.
 
