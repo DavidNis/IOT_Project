@@ -9,10 +9,15 @@ class TemperatureReading {
 
 class GraphsAndLogsScreen extends StatelessWidget {
   final List<TemperatureReading> temperatureLog;
+  final bool isACOn; // Pass this flag to indicate if the AC is on or off.
+  final VoidCallback onClearLogs;
+  
 
   const GraphsAndLogsScreen({
     Key? key,
     required this.temperatureLog,
+    required this.isACOn,
+    required this.onClearLogs,
   }) : super(key: key);
 
   @override
@@ -22,6 +27,13 @@ class GraphsAndLogsScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Graphs & Logs'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: onClearLogs, // Call the clear logs function
+              tooltip: 'Clear Logs',
+            ),
+          ],
           bottom: const TabBar(
             tabs: [
               Tab(icon: Icon(Icons.show_chart), text: 'Graph'),
@@ -44,14 +56,14 @@ class GraphsAndLogsScreen extends StatelessWidget {
       return const Center(child: Text('No temperature data yet...'));
     }
 
-    // 1) Compute a recommended temperature (e.g. the average)
+    // Compute the recommended temperature (e.g., the average)
     double sum = 0;
     for (final reading in temperatureLog) {
       sum += reading.value;
     }
     final recommended = sum / temperatureLog.length;
 
-    // 2) Convert each reading to FlSpot. If each reading is 5s apart => x = index*5
+    // Convert each reading to FlSpot
     final spots = temperatureLog.asMap().entries.map((entry) {
       final index = entry.key;
       final reading = entry.value;
@@ -63,9 +75,20 @@ class GraphsAndLogsScreen extends StatelessWidget {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          // Display the recommended temperature just above the chart
+          // Show AC status
           Text(
-            'Recommended: ${recommended.toStringAsFixed(1)}°C',
+            isACOn ? 'AC is ON' : 'AC is OFF - Logging Paused',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: isACOn ? Colors.green : Colors.red,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Display the recommended temperature
+          Text(
+            'Recommended Temperature: ${recommended.toStringAsFixed(1)}°C',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 12),
@@ -73,10 +96,8 @@ class GraphsAndLogsScreen extends StatelessWidget {
           Expanded(
             child: LineChart(
               LineChartData(
-                // Force Y range 16..30 (adjust if you want a different range)
                 minY: 16,
                 maxY: 30,
-
                 lineBarsData: [
                   LineChartBarData(
                     spots: spots,
@@ -86,7 +107,6 @@ class GraphsAndLogsScreen extends StatelessWidget {
                     color: Colors.blue,
                   ),
                 ],
-
                 titlesData: FlTitlesData(
                   topTitles: AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
@@ -99,14 +119,10 @@ class GraphsAndLogsScreen extends StatelessWidget {
                       showTitles: true,
                       reservedSize: 30,
                       getTitlesWidget: (value, meta) {
-                        // Render text horizontally (angle=0)
-                        return Transform.rotate(
-                          angle: 0.0,
-                          child: Text(
-                            '${value.toInt()}',
-                            style: const TextStyle(fontSize: 12),
-                            textAlign: TextAlign.center,
-                          ),
+                        return Text(
+                          '${value.toInt()}',
+                          style: const TextStyle(fontSize: 12),
+                          textAlign: TextAlign.center,
                         );
                       },
                     ),
@@ -115,7 +131,6 @@ class GraphsAndLogsScreen extends StatelessWidget {
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (value, meta) {
-                        // Show label only if multiple of 5
                         if (value % 5 == 0) {
                           return Text('${value.toInt()}s',
                               style: const TextStyle(fontSize: 12));
@@ -125,15 +140,11 @@ class GraphsAndLogsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
-                // Only bottom & left borders as axes
                 borderData: FlBorderData(
                   show: true,
                   border: const Border(
                     left: BorderSide(color: Colors.black, width: 1),
                     bottom: BorderSide(color: Colors.black, width: 1),
-                    right: BorderSide(color: Colors.transparent, width: 0),
-                    top: BorderSide(color: Colors.transparent, width: 0),
                   ),
                 ),
               ),
@@ -145,20 +156,36 @@ class GraphsAndLogsScreen extends StatelessWidget {
   }
 
   Widget _buildLogsTab() {
+    // Check if the log is empty
+    if (temperatureLog.isEmpty) {
+      return const Center(
+        child: Text(
+          'No temperature logs available.',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      );
+    }
+
     return ListView.separated(
       itemCount: temperatureLog.length,
       separatorBuilder: (_, __) => const Divider(),
       itemBuilder: (context, index) {
+        // Safeguard against potential out-of-range errors
+        if (index < 0 || index >= temperatureLog.length) {
+          return const SizedBox(); // Return an empty widget if index is invalid
+        }
+
         final reading = temperatureLog[index];
         final time = reading.timestamp;
         final dateStr = '${time.day}/${time.month}/${time.year}';
         final timeStr =
-            '${time.hour.toString().padLeft(2, '0')}:'
-            '${time.minute.toString().padLeft(2, '0')}:'
+            '${time.hour.toString().padLeft(2, '0')}:' +
+            '${time.minute.toString().padLeft(2, '0')}:' +
             '${time.second.toString().padLeft(2, '0')}';
+
         return ListTile(
           leading: const Icon(Icons.device_thermostat),
-          title: Text('${reading.value} °C'),
+          title: Text('${reading.value.toStringAsFixed(1)} °C'),
           subtitle: Text('$dateStr $timeStr'),
         );
       },
