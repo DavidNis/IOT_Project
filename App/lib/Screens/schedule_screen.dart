@@ -106,7 +106,18 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Schedule saved successfully!")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Center(
+            child: Text(
+              "Schedule saved successfully!",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
     } catch (e) {
       print("Error saving to Firebase: $e");
       if (!mounted) return;
@@ -350,7 +361,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 ),
             ],
 
-            Spacer(),
+            SizedBox(height: 80), // Add this line to move the button up by 2 cm (20 pixels)
+
+            //Spacer(),
 
             // Save Button
             SizedBox(
