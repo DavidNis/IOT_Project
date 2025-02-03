@@ -86,6 +86,7 @@ Timer? _favoriteTimer;
   @override
   void initState() {
     super.initState();
+    _loadACSettingsOnce();
     fetchCurrentTemperature();
     fetchIndoorData();
     _loadFavoriteSettings();
@@ -336,6 +337,55 @@ void _showErrorMessage() {
       }
     });
   }
+
+  
+  Future<void> _loadACSettingsOnce() async {
+  try {
+    final DatabaseReference transmitterRef =
+        FirebaseDatabase.instance.ref('transmitter');
+
+    final snapshot = await transmitterRef.get();
+    if (snapshot.exists) {
+      final data = snapshot.value as Map<dynamic, dynamic>;
+
+      // Safely parse the fields. This assumes your Firebase structure is:
+      // transmitter/
+      //   mode/
+      //     value: "Cool"
+      //   fanSpeed/
+      //     value: "Low"
+      //   temp/
+      //     value: 24
+      //
+      final String firebaseMode = data['mode']?['value']?.toString() ?? 'Cool';
+      final String firebaseFanSpeed =
+          data['fanSpeed']?['value']?.toString() ?? 'Low';
+      final double firebaseTemperature = double.tryParse(
+            data['temp']?['value']?.toString() ?? '29',
+          ) ??
+          24.0;
+
+    await FirebaseDatabase.instance
+        .ref('transmitter/onOff/code')
+        .set('F720DF');
+    await FirebaseDatabase.instance
+        .ref('transmitter/onOff/value')
+        .set('Off');
+
+      // Update your local state
+      newMode = firebaseMode;
+      newFanSpeed = firebaseFanSpeed;
+      newTemperature = firebaseTemperature;
+      setState(() {
+        mode = newMode ;
+        fanSpeed = newFanSpeed;
+        temperature = newTemperature;
+      });
+    }
+  } catch (e) {
+    debugPrint("Error loading AC settings once: $e");
+  }
+}
 
   // Fetch the current outdoor temperature from Weather API
   Future<void> fetchCurrentTemperature() async {
