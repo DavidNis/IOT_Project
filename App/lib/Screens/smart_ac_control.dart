@@ -14,8 +14,9 @@ import '../Screens/climate_react_screen.dart';
 import '../Screens/setting_screen.dart';
 import '../Screens/login_screen.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+//import '../Screens/ac_selection_screen.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
-//import 'package:connectivity_plus/connectivity_plus.dart';
 
 
 class SmartACControl extends StatefulWidget {
@@ -66,6 +67,11 @@ Timer? _favoriteTimer;
   Timer? _scheduleTimer; 
 
   bool _hasUnsavedChanges = false;
+  //***********CONNECTIVITY*********************/
+  final Connectivity _connectivity = Connectivity();
+  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  ///////////////////////////////////////////////////////////////
+  
 
 
   //bool showError = false;
@@ -95,11 +101,12 @@ Timer? _favoriteTimer;
     _startListeningToRandomValue();
     // _checkConnection();
     _loadHistoricalTemperatureData();
+  
 
     _listenToFavoriteSettings();
+    _startMonitoringConnectivity();
 
-
-    // Start polling the userג€™s set temperature every 5 seconds
+    // Start polling the users set temperature every 5 seconds
     _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _fetchSetTemperatureFromFirebase();
     });
@@ -109,6 +116,87 @@ Timer? _favoriteTimer;
       _checkSchedule();
     });//schedule
   }
+
+ void _startMonitoringConnectivity() {
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen((ConnectivityResult result) {
+      _updateConnectionStatus(result);
+    });
+
+    // Check initial connectivity status
+    _checkInitialConnectivity();
+  }
+
+  Future<void> _checkInitialConnectivity() async {
+      final result = await _connectivity.checkConnectivity();
+      _updateConnectionStatus(result);
+    }
+
+    void _updateConnectionStatus(ConnectivityResult result)async {
+      if (result == ConnectivityResult.none) {
+        _showNoInternetMessage();
+      } else {
+        _hideNoInternetMessage();
+
+        try {
+          // Re-fetch data or perform necessary updates when Wi-Fi is back
+          await _fetchDataOnReconnect();
+        } catch (e, stackTrace) {
+          debugPrint('Error during reconnection: $e');
+          debugPrint('Stack trace: $stackTrace');
+        }
+      }
+    }
+
+  Future<void> _fetchDataOnReconnect() async {
+    try {
+      // Example: Re-fetch Firebase data safely
+      final DatabaseReference ref = FirebaseDatabase.instance.ref('DHT');
+      final snapshot = await ref.get();
+
+      if (snapshot.exists) {
+        final data = snapshot.value as Map<dynamic, dynamic>? ?? {};
+        setState(() {
+          indoorTemperature = double.tryParse(data['temperature']?.toString() ?? '0.0') ?? 0.0;
+          humidity = double.tryParse(data['humidity']?.toString() ?? '0.0') ?? 0.0;
+        });
+      } else {
+        debugPrint('No data found for the selected AC.');
+      }
+    } catch (e) {
+      debugPrint('Error fetching data on reconnect: $e');
+    }
+  }
+
+  void _showNoInternetMessage() {
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (messenger.mounted) {
+      messenger.hideCurrentSnackBar(); // Dismiss any active SnackBar
+    }
+
+  messenger.showSnackBar(
+  const SnackBar(
+    content: Center(
+      child: Text(
+        'No internet connection.',
+        style: TextStyle(color: Colors.white),
+      ),
+    ),
+    backgroundColor: Colors.red,
+    duration: Duration(days: 1),
+  ),
+);
+  }
+
+  void _hideNoInternetMessage() {
+    // Ensure no errors if no SnackBar exists
+    final messenger = ScaffoldMessenger.of(context);
+    if (messenger.mounted) {
+      messenger.hideCurrentSnackBar();
+    }
+  }
+//************************************************************************************ */
 
 
 Future<void> _checkSchedule() async {
@@ -223,44 +311,45 @@ void _loadHistoricalTemperatureData() async {
     debugPrint('Error loading historical data: $e');
   }
 }
+Future<void> moveAllNodesToACs(String deviceId) async {
+  try {
+    print('Starting migration of all root nodes to ACs/$deviceId');
 
+    final DatabaseReference rootRef = FirebaseDatabase.instance.ref();
+    final DatabaseReference deviceRef = FirebaseDatabase.instance.ref('ACs/$deviceId');
 
+    // Fetch all nodes at the root level
+    final DataSnapshot snapshot = await rootRef.get();
 
-  // Future<void> _checkConnection() async {
-  //   final connectivityResult = await _connectivity.checkConnectivity();
-  //   _updateConnectionStatus(connectivityResult);
-  // }
+    if (snapshot.exists) {
+      final Map<dynamic, dynamic> rootData = snapshot.value as Map<dynamic, dynamic>;
 
-  // void _updateConnectionStatus(ConnectivityResult result) {
-  //   final hasInternet = result == ConnectivityResult.mobile ||
-  //       result == ConnectivityResult.wifi;
+      for (String key in rootData.keys) {
+        // Skip the 'ACs' node to avoid overwriting existing devices
+        if (key == 'ACs') {
+          print('Skipping ACs node');
+          continue;
+        }
 
-  //   if (!hasInternet) {
-  //     _showNoConnectionMessage();
-  //   } else {
-  //     _hideNoConnectionMessage();
-  //   }
+        print('Moving $key: ${rootData[key]} to ACs/$deviceId');
 
-  //   setState(() {
-  //     isConnected = hasInternet;
-  //   });
-  // }
+        // Copy the node under ACs/{deviceId}
+        await deviceRef.child(key).set(rootData[key]);
 
-  // void _showNoConnectionMessage() {
-  //   _connectionSnackBarController = ScaffoldMessenger.of(context).showSnackBar(
-  //     const SnackBar(
-  //       content: Text('No connection'),
-  //       backgroundColor: Colors.red,
-  //       duration: Duration(days: 1), // Persistent until hidden
-  //     ),
-  //   );
-  // }
+        // Remove the node from the root
+        await rootRef.child(key).remove();
 
-  // void _hideNoConnectionMessage() {
-  //   _connectionSnackBarController?.close();
-  //   _connectionSnackBarController = null;
-  // }
+        print('Successfully moved $key to ACs/$deviceId and removed from root.');
+      }
 
+      print('All root nodes successfully moved to ACs/$deviceId');
+    } else {
+      print('No nodes found at the root level.');
+    }
+  } catch (e) {
+    print('Error while migrating nodes: $e');
+  }
+}
 
 
 
@@ -285,22 +374,27 @@ void _resetTimer() {
     });
   }
 
-void _showErrorMessage() {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.clearSnackBars();
-  _snackBarController = messenger.showSnackBar(
-    const SnackBar(
-      content: Center(
-        child: Text(
-          'The AC is not connected',
+  void _showErrorMessage() {
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Dismiss any active SnackBars
+    if (messenger.mounted) {
+      messenger.hideCurrentSnackBar();
+    }
+
+    // Show the error message
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'The AC is not connected.',
           style: TextStyle(color: Colors.white),
         ),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 5),
       ),
-      backgroundColor: Colors.red,
-      duration: Duration(hours: 1), // Indefinite duration
-    ),
-  );
-}
+    );
+  }
+
 
  void _hideErrorMessage() {
   _snackBarController?.close();
@@ -315,7 +409,7 @@ void _showErrorMessage() {
     _timer?.cancel();
    _scheduleTimer?.cancel();
     _inactivityTimer?.cancel();
-    //_connectivitySubscription?.cancel();
+    _connectivitySubscription?.cancel();
     super.dispose();
   }
 
@@ -1470,7 +1564,7 @@ if (soundActive) {
 
                                         // 3) Revert button color after 2 seconds
                                         _favoriteTimer?.cancel();
-                                        _favoriteTimer = Timer(const Duration(seconds: 2), () {
+                                        _favoriteTimer = Timer(const Duration(seconds: 1), () {
                                           if (mounted) {
                                             setState(() {
                                               _favoritePressed = false;
