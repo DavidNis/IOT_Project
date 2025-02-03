@@ -60,7 +60,7 @@ Timer? _favoriteTimer;
   String newFanSpeed = "Low";
   double newTemperature = 24;
 
-  int randomSeconds = 5;
+  int randomSeconds = 7;
   String randomValue = '';
   Timer? _timer;
   Timer? _inactivityTimer;
@@ -383,16 +383,18 @@ void _resetTimer() {
     }
 
     // Show the error message
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text(
-          'The AC is not connected.',
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.red,
-        duration: Duration(seconds: 5),
+   messenger.showSnackBar(
+  const SnackBar(
+    content: Center(
+      child: Text(
+        'The AC is not connected',
+        style: TextStyle(color: Colors.white),
       ),
-    );
+    ),
+    backgroundColor: Colors.red,
+    duration: Duration(seconds: 5),
+  ),
+);
   }
 
 
@@ -604,7 +606,9 @@ void _resetTimer() {
       fanSpeed = newFanSpeed;
       temperature = newTemperature;
     });
-
+if (soundActive) {
+                                    await _speakACSettings();
+                                  }   
     // 8) Show success
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -978,7 +982,7 @@ Future<void> _applyClimateReactSettings(Map<dynamic, dynamic> data) async {
   // Safe parsing
   final String setFan = data["setFan"] ?? "Low";
   final String setMode = data["setMode"] ?? "Cool";
-  final String swing = data["swing"] ?? "Stopped";
+  //final String swing = data["swing"] ?? "Stopped";
   final int setTemp = data["setTemp"] ?? 24;
 
   // 1) Set mode
@@ -1059,7 +1063,33 @@ Future<void> _applyClimateReactSettings(Map<dynamic, dynamic> data) async {
     temperature = newTemperature;
     // handle any additional fields for swing, etc.
   });
+if (mounted) {
+   ScaffoldMessenger.of(context).showSnackBar(
+  SnackBar(
+    content: Center(
+      child: Text(
+        "Climate React Activated",
+        style: TextStyle(color: Colors.white),
+      ),
+    ),
+    backgroundColor: Colors.green,
+    duration: const Duration(seconds: 3),
+  ),
+);
+  }
 
+
+
+  if (soundActive) {
+     String text = "Climate React activated.";
+
+  await flutterTts.setSpeechRate(0.0);
+  await flutterTts.setPitch(0.5);
+  await flutterTts.setLanguage("en-UK");
+  // Use flutterTts to speak
+  await flutterTts.speak(text);
+      await _speakACSettings();
+}
   print("Applied climateReact settings => Mode: $setMode, Fan: $setFan, Temp: $setTemp");
 }
 
@@ -1414,7 +1444,7 @@ if (soundActive) {
                                 _changeTemperature(value);
                               },
                             ),
-                            SizedBox(height: constraints.maxHeight * 0.02),
+                            SizedBox(height: constraints.maxHeight * 0.01),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
@@ -1467,20 +1497,28 @@ if (soundActive) {
                                 child: const Text('Press to Set AC Settings'),
                               ),
                             ),
-                            SizedBox(height: constraints.maxHeight * 0.06),
+                            SizedBox(height: constraints.maxHeight * 0.04),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
                                 IconButtonFeature(
-                                  label: "Light",
-                                  icon: Icons.lightbulb,
-                                  isActive: lightActive,
-                                  onPressed: () {
-                                    setState(() {
-                                      lightActive = !lightActive;
-                                    });
-                                  },
-                                ),
+  label: "Light",
+  icon: Icons.lightbulb,
+  isActive: lightActive,
+  onPressed: () {
+    setState(() {
+      lightActive = !lightActive;
+    });
+
+    // If light is on => set transmitter/mode/leds = 1
+    // Else => set transmitter/mode/leds = 0
+    if (lightActive) {
+      FirebaseDatabase.instance.ref('transmitter/mode/leds').set(1);
+    } else {
+      FirebaseDatabase.instance.ref('transmitter/mode/leds').set(0);
+    }
+  },
+),
                                 IconButtonFeature(
                                   label: "Sound",
                                   icon: Icons.volume_up,
@@ -1494,30 +1532,10 @@ if (soundActive) {
                                     }
                                   },
                                 ),
-                                IconButtonFeature(
-                                  label: "Horizontal Swing",
-                                  icon: Icons.swap_horiz,
-                                  isActive: horizontalSwingActive,
-                                  onPressed: () {
-                                    setState(() {
-                                      horizontalSwingActive =
-                                          !horizontalSwingActive;
-                                    });
-                                  },
-                                ),
-                                IconButtonFeature(
-                                  label: "Vertical Swing",
-                                  icon: Icons.north,
-                                  isActive: verticalSwingActive,
-                                  onPressed: () {
-                                    setState(() {
-                                      verticalSwingActive = !verticalSwingActive;
-                                    });
-                                  },
-                                ),
+                           
                               ],
                             ),
-                            SizedBox(height: constraints.maxHeight * 0.02),
+                            SizedBox(height: constraints.maxHeight * 0.01),
                             Divider(height: 1, color: Colors.grey[300]),
                             Padding(
                               padding: const EdgeInsets.symmetric(
@@ -1541,7 +1559,7 @@ if (soundActive) {
 
                                SizedBox(
                                     width: double.infinity,
-                                    height: 50,
+                                    height: 45,
                                     child: ElevatedButton.icon(
                                       icon: const Icon(Icons.favorite, color: Colors.red),
                                         label: const Text(
@@ -1553,7 +1571,7 @@ if (soundActive) {
                                         backgroundColor: _favoritePressed ? Colors.blue : Colors.white,
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                       ),
-                                      onPressed: () {
+                                      onPressed: () async {
                                         // 1) Change button color to "active"
                                         setState(() {
                                           _favoritePressed = true;
@@ -1561,6 +1579,8 @@ if (soundActive) {
 
                                         // 2) Apply your favorite settings
                                         _applyFavoriteSettings();
+
+                                        
 
                                         // 3) Revert button color after 2 seconds
                                         _favoriteTimer?.cancel();
