@@ -27,7 +27,8 @@ class _SmartACControlState extends State<SmartACControl> {
   final List<TemperatureReading> _temperatureLog = [];
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final FlutterTts flutterTts = FlutterTts();
-
+bool _favoritePressed = false;
+Timer? _favoriteTimer;
   //StreamSubscription<ConnectivityResult>? _connectivitySubscription;
   //final Connectivity _connectivity = Connectivity();
   //ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _connectionSnackBarController;
@@ -284,7 +285,9 @@ void _resetTimer() {
   }
 
 void _showErrorMessage() {
-  _snackBarController = ScaffoldMessenger.of(context).showSnackBar(
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.clearSnackBars();
+  _snackBarController = messenger.showSnackBar(
     const SnackBar(
       content: Center(
         child: Text(
@@ -298,9 +301,10 @@ void _showErrorMessage() {
   );
 }
 
-  void _hideErrorMessage() {
-    _snackBarController?.close();
-  }
+ void _hideErrorMessage() {
+  _snackBarController?.close();
+  _snackBarController = null;
+}
 
 
   @override
@@ -384,38 +388,13 @@ void _showErrorMessage() {
 
     // 2) Parse the data
     final data = snapshot.value as Map<dynamic, dynamic>;
-    final String acState = data['acState']?.toString() ?? 'Off'; // e.g., "On" or "Off"
+  //  final String acState = data['acState']?.toString() ?? 'Off'; 
     final String setMode = data['mode']?.toString() ?? 'Cool'; 
     final String setFan = data['fanSpeed']?.toString() ?? 'Low'; 
     final double setTemp = double.tryParse(data['temperature']?.toString() ?? '24') ?? 24;
 
     // 3) Toggle AC Power if needed
-    if (acState == "On" && !isPowerOn) {
-      // Turn AC on (IR hex e.g. "F7C03F")
-      await FirebaseDatabase.instance
-          .ref('transmitter/onOff/code')
-          .set("F7C03F");
-      await FirebaseDatabase.instance
-          .ref('transmitter/onOff/value')
-          .set("On");
-
-      setState(() {
-        isPowerOn = true;
-      });
-    } else if (acState == "Off" && isPowerOn) {
-      // Turn AC off (IR hex e.g. "F740BF")
-      await FirebaseDatabase.instance
-          .ref('transmitter/onOff/code')
-          .set("F740BF");
-      await FirebaseDatabase.instance
-          .ref('transmitter/onOff/value')
-          .set("Off");
-
-      setState(() {
-        isPowerOn = false;
-      });
-    }
-
+    if (isPowerOn) {
     // 4) Set the mode
     // Example: "Cool" => "F7609F", "Heat" => "F720DF"
     String modeHexValue = (setMode == "Cool") ? "F7609F" : "F720DF";
@@ -489,8 +468,8 @@ void _showErrorMessage() {
         backgroundColor: Colors.green,
       ),
     );
-    debugPrint("Applied favorites => acState:$acState mode:$setMode fan:$setFan temp:$setTemp");
-
+   // debugPrint("Applied favorites => acState:$acState mode:$setMode fan:$setFan temp:$setTemp");
+    }
   } catch (e) {
     debugPrint("Error applying favorites: $e");
     ScaffoldMessenger.of(context).showSnackBar(
@@ -499,6 +478,10 @@ void _showErrorMessage() {
         backgroundColor: Colors.red,
       ),
     );
+
+    
+    
+  
   }
 }
 
@@ -849,9 +832,9 @@ Future<void> _turnOnAC() async {
 
 Future<void> _applyClimateReactSettings(Map<dynamic, dynamic> data) async {
   // Safe parsing
-  final String setFan = data["setFan"] ?? "Auto";
+  final String setFan = data["setFan"] ?? "Low";
   final String setMode = data["setMode"] ?? "Cool";
-  final String swing = data["swing"] ?? "Stopped (auto)";
+  final String swing = data["swing"] ?? "Stopped";
   final int setTemp = data["setTemp"] ?? 24;
 
   // 1) Set mode
@@ -877,7 +860,7 @@ Future<void> _applyClimateReactSettings(Map<dynamic, dynamic> data) async {
       fanHexValue = "F76897";
       break;
     default:
-      fanHexValue = "F7E817"; // example for "Auto"
+      fanHexValue = "F728D7"; // example for "Auto"
       break;
   }
   await FirebaseDatabase.instance
@@ -1412,22 +1395,41 @@ if (soundActive) {
                                   // ),
                                   // Divider(height: 1, color: Colors.grey[300]),
 
-                                  ToggleRow(
-                                    label: "My Favorite",
-                                    description:
-                                        "Choose your favorite settings",
-                                    icon: Icons.favorite_border,
-                                    value: myFavorite,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        myFavorite = value;
-                                        if (myFavorite) {
-                                          _applyFavoriteSettings();
-                                        }
-                                      });
-                                    },
+                               SizedBox(
+                                    width: double.infinity,
+                                    height: 50,
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(Icons.favorite, color: Colors.red),
+                                        label: const Text(
+                                      "Apply My Favorite",
+                                      style: TextStyle(color: Colors.black,fontSize: 17,), // Set text color to black
+                                    
+                                    ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: _favoritePressed ? Colors.blue : Colors.white,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      onPressed: () {
+                                        // 1) Change button color to "active"
+                                        setState(() {
+                                          _favoritePressed = true;
+                                        });
+
+                                        // 2) Apply your favorite settings
+                                        _applyFavoriteSettings();
+
+                                        // 3) Revert button color after 2 seconds
+                                        _favoriteTimer?.cancel();
+                                        _favoriteTimer = Timer(const Duration(seconds: 2), () {
+                                          if (mounted) {
+                                            setState(() {
+                                              _favoritePressed = false;
+                                            });
+                                          }
+                                        });
+                                      },
+                                    ),
                                   ),
-                                  Divider(height: 1, color: Colors.grey[300]),
                                 ],
                               ),
                             ),
