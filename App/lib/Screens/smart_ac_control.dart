@@ -747,7 +747,7 @@ void _showNoConnectionMessage() {
     });
   }
 
-  // get the userג€™s set temperature from firebase under`transmitter/temp/value`
+  // get the user's set temperature from firebase under`transmitter/temp/value`
   // and add it to `temperatureLog` every 5 seconds.
 // In _SmartACControlState of smart_ac_control.dart
 Future<void> _fetchSetTemperatureFromFirebase() async {
@@ -1146,6 +1146,16 @@ Future<void> _applyChanges() async {
   // Do nothing if the AC is off
   return;
   }
+  if (newTemperature < 16.0 || newTemperature > 30.0) {
+    // Skip updates if temperature is out of range
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Temperature must be between 16°C and 30°C.'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return;
+  }
   try {
     // Update mode
     String modeHexValue = newMode == "Cool" ? "F7609F" : "F720DF";
@@ -1253,21 +1263,21 @@ if (soundActive) {
                     'Menu',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 24,
+                      fontSize: 30,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    FirebaseAuth.instance.currentUser?.displayName != null
-                        ? 'Welcome ${FirebaseAuth.instance.currentUser!.displayName}'
-                        : 'Welcome User',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 20,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
+                  // Text(
+                  //   FirebaseAuth.instance.currentUser?.displayName != null
+                  //       ? 'Welcome ${FirebaseAuth.instance.currentUser!.displayName}'
+                  //       : 'Welcome User',
+                  //   style: const TextStyle(
+                  //     color: Colors.white70,
+                  //     fontSize: 20,
+                  //     fontStyle: FontStyle.italic,
+                  //   ),
+                  // ),
                 ],
               ),
             ),
@@ -1346,11 +1356,11 @@ if (soundActive) {
                 );
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.exit_to_app),
-              title: const Text('Sign Out'),
-              onTap: _signOut, // Sign out action
-            ),
+            // ListTile(
+            //   leading: const Icon(Icons.exit_to_app),
+            //   title: const Text('Sign Out'),
+            //   onTap: _signOut, // Sign out action
+            // ),
           ],
         ),
       ),
