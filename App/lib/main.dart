@@ -16,6 +16,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Smart AC',
       theme: ThemeData(primarySwatch: Colors.blue),
+      debugShowCheckedModeBanner: false, // Remove the debug banner
       //home: LoginScreen(),
       home: SmartACControl(), // Set LoginScreen as the home screen
     );
