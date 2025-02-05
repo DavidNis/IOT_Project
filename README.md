@@ -80,12 +80,21 @@ The fan speed is visually represented through the intensity and brightness of th
 
 We used a weather service called geolocator so the user can know what temperature is outside and decide what settings he wants based on this data.
 
+what we have in github: 
+- App - the code to the app in flutter
+- Unitests- a folder containing all the files testing code of the sensors and making sure they are working as expected.
+- esp - a folder for the esp code.
+- esp connection - the diagram for the connections we made with the esp and sensors.
+
+Arduino libraries:
+  DHT Sensor Library (version: 1.4.4)
+  IRremote (version: 3.8.0)
+
 This is what the app looks like:
 
 
 
 
-![image_resized_sign_in_smaller](https://github.com/user-attachments/assets/06cc6f16-9834-4005-bb04-2b10aa31b411)
 ![image_resized_smaller](https://github.com/user-attachments/assets/cb38e2cb-2f2e-4ef5-902d-582c3a782a37)&nbsp; ![image_resized_new_smaller](https://github.com/user-attachments/assets/2c4c3d12-4373-4de7-a004-851d8759f00e)&nbsp;
  ![image_resized_third_smaller](https://github.com/user-attachments/assets/4172dac3-2179-4cdb-b662-549812fbdec9)
 
