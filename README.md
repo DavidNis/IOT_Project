@@ -87,8 +87,15 @@ what we have in github:
 - esp connection - the diagram for the connections we made with the esp and sensors.
 
 Arduino libraries:
-  DHT Sensor Library (version: 1.4.4)
-  IRremote (version: 3.8.0)
+ - DHT Sensor Library (version: 1.4.6)
+ - IRremoteESP8266 (version: 2.8.2)
+ - mr76_radar (version: 1.0.0)
+ - adafruit NeoPixel (version: 1.12.4)
+ - Arduino Uno WiFi Dev Ed Library (version: 0.0.3)
+ - Firebase Arduino Client Library for ESP8266 (version: 4.4.16)
+ - Firebase ESP32 Client (version: 4.4.16)
+ - FirebaseClient (version: 1.4.13)
+ - ld2410 for radar (version: 0.1.4)
 
 This is what the app looks like:
 
