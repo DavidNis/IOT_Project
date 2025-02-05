@@ -67,25 +67,10 @@ Features & Functionalities:
 For Heat and Cool modes, users can select the desired AC mode using the Mode button. When Cool mode is activated, the screen displays a blue color, while in Heat mode, the main screen shifts to a red color, providing a clear visual distinction between the two modes.
 Every color represents a temperature range and AC mode (cool/heat) as follows:
 
-• Heat:
+• Heat: Red
 
- 16°C - 20°C: yellow
-
- 21°C - 25°C: Orange
-
- 24°C - 28°C: Darker Orange
-
- 27°C - 30°C: Red
-
-• Cool:
-
- 16°C - 20°C: Blue
-
- 21°C - 25°C: Lighter blue
-
- 24°C - 28°C: Lighter blue
-
- 27°C - 30°C: White    ??? maybe these temperatures
+• Cool: Blue
+note: In this project we used an LED strip to mimic the actions of the air conditioner. We assigned a color to each action. This is the table of colors: https://docs.google.com/document/d/1NsDxYVM9NoeyYUQDBZ27Zgk-eU5JNdtJ/edit.
 
 *Minimum AC temperature: 16°C
 
